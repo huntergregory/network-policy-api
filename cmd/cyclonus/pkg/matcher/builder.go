@@ -12,10 +12,10 @@ import (
 )
 
 func BuildNetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy) *Policy {
-	return BuildV2NetworkPolicies(simplify, netpols, nil, nil)
+	return BuildV1AndV2NetPols(simplify, netpols, nil, nil)
 }
 
-func BuildV2NetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, BANPs []*v1alpha1.BaselineAdminNetworkPolicy) *Policy {
+func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, BANPs []*v1alpha1.BaselineAdminNetworkPolicy) *Policy {
 	np := NewPolicy()
 	for _, policy := range netpols {
 		ingress, egress := BuildTarget(policy)
@@ -70,17 +70,15 @@ func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
 		switch pType {
 		case networkingv1.PolicyTypeIngress:
 			ingress = &Target{
-				Namespace:   policyNamespace,
-				PodSelector: netpol.Spec.PodSelector,
-				SourceRules: []NetPolID{netPolID(netpol)},
-				Peers:       BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
+				SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
+				SourceRules:     []NetPolID{netPolID(netpol)},
+				Peers:           BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
 			}
 		case networkingv1.PolicyTypeEgress:
 			egress = &Target{
-				Namespace:   policyNamespace,
-				PodSelector: netpol.Spec.PodSelector,
-				SourceRules: []NetPolID{netPolID(netpol)},
-				Peers:       BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
+				SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
+				SourceRules:     []NetPolID{netPolID(netpol)},
+				Peers:           BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
 			}
 		}
 	}

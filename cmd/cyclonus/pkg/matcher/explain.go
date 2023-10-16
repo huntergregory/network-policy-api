@@ -48,14 +48,13 @@ func (s *SliceBuilder) TargetsTableLines(targets []*Target, isIngress bool) {
 		ruleType = "Egress"
 	}
 	for _, target := range targets {
-		targetString := fmt.Sprintf("namespace: %s\n%s", target.Namespace, kube.LabelSelectorTableLines(target.PodSelector))
 		sourceRules := slice.Sort(target.SourceRules)
 		sourceRulesStrings := make([]string, len(sourceRules), 0)
 		for _, rule := range sourceRules {
 			sourceRulesStrings = append(sourceRulesStrings, string(rule))
 		}
 		rules := strings.Join(sourceRulesStrings, "\n")
-		s.Prefix = []string{ruleType, targetString, rules}
+		s.Prefix = []string{ruleType, target.TargetString(), rules}
 
 		if len(target.Peers) == 0 {
 			s.Append("no pods, no ips", "no ports, no protocols")

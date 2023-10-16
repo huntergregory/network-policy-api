@@ -51,23 +51,6 @@ func RunBuilderTests() {
 		})
 	})
 
-	Describe("BuildTarget: missing namespace gets treated as default namespace", func() {
-		It("missing namespace", func() {
-			ingress, egress := BuildTarget(&networkingv1.NetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "abc",
-				},
-				Spec: networkingv1.NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{},
-					Ingress:     []networkingv1.NetworkPolicyIngressRule{},
-					PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
-				}})
-
-			Expect(ingress.Namespace).To(Equal("default"))
-			Expect(egress.Namespace).To(Equal("default"))
-		})
-	})
-
 	Describe("BuildTarget: Allow none -- empty ingress/egress", func() {
 		It("allow-no-ingress", func() {
 			ingress, egress := BuildTarget(netpol.AllowNoIngress_EmptyIngress)
@@ -178,7 +161,7 @@ func RunBuilderTests() {
 					Port: port53UDPMatcher,
 				}}))
 
-			Expect(ip.Allows(&TrafficPeer{IP: "192.168.242.249"}, 80, "", tcp)).To(Equal(true))
+			Expect(ip.Evaluate(&TrafficPeer{IP: "192.168.242.249"}, 80, "", tcp)).To(Equal(AllowV1Effect))
 		})
 	})
 

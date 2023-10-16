@@ -3,6 +3,7 @@ package matcher
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,13 +19,12 @@ func (ppm *PodPeerMatcher) PrimaryKey() string {
 	return ppm.Namespace.PrimaryKey() + "---" + ppm.Pod.PrimaryKey()
 }
 
-func (ppm *PodPeerMatcher) Allows(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
-	if peer.IsExternal() {
-		return false
-	}
-	return ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
+func (ppm *PodPeerMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
+	isAllowed := peer.IsExternal() && ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
 		ppm.Pod.Allows(peer.Internal.PodLabels) &&
 		ppm.Port.Allows(portInt, portName, protocol)
+
+	return NewV1Effect(isAllowed)
 }
 
 // PodMatcher possibilities:

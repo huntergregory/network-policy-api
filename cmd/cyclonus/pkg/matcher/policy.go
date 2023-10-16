@@ -5,12 +5,16 @@ import (
 	"strings"
 
 	"github.com/mattfenwick/collections/pkg/slice"
-	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/olekukonko/tablewriter"
 	"golang.org/x/exp/maps"
 )
 
-// Policy represents ALL Policies in the cluster (i.e. all ANPs, BANPs, and v1 NetPols, ANPs).
+const (
+	maxUint = ^uint(0)
+	maxInt  = int(maxUint >> 1)
+)
+
+// Policy represents ALL Policies in the cluster (i.e. all ANPs, BANPs, and v1 NetPols).
 // A NetPol, ANP, or BANP is translated into an Ingress and/or Egress Target.
 // The (primary) key for these Targets is a string representation of either:
 // a) the Namespace and Pod Selector (for v1 NetPols)
@@ -61,7 +65,7 @@ func (p *Policy) AddTarget(isIngress bool, target *Target) *Target {
 	return dict[pk]
 }
 
-func (p *Policy) TargetsApplyingToPod(isIngress bool, namespace string, podLabels map[string]string) []*Target {
+func (p *Policy) TargetsApplyingToPod(isIngress bool, subject *InternalPeer) []*Target {
 	var targets []*Target
 	var dict map[string]*Target
 	if isIngress {
@@ -70,25 +74,74 @@ func (p *Policy) TargetsApplyingToPod(isIngress bool, namespace string, podLabel
 		dict = p.Egress
 	}
 	for _, target := range dict {
-		if target.IsMatch(namespace, podLabels) {
+		if target.IsMatch(subject) {
 			targets = append(targets, target)
 		}
 	}
 	return targets
 }
 
-type DirectionResult struct {
-	AllowingTargets []*Target
-	DenyingTargets  []*Target
+// DirectionResult contains information on the final result taken on traffic in a single direction (ingress or egress)
+// taking into account all ANPs/BANPs and v1 NetPols.
+type DirectionResult []Effect
+
+func (d DirectionResult) IsAllowed() bool {
+	if d == nil {
+		// No targets match => automatic allow
+		return true
+	}
+
+	// 1. ANPs
+	e := d.highestPriority(AdminNetworkPolicy)
+	if e.Verdict == Allow {
+		return true
+	}
+
+	if e.Verdict == Deny {
+		return false
+	}
+
+	// 2. v1 NetPols
+	for _, e := range d {
+		if e.PolicyKind != NetworkPolicyV1 {
+			continue
+		}
+
+		if e.Verdict == Allow {
+			return true
+		}
+	}
+
+	// 3. BANPs
+	e = d.highestPriority(BaselineAdminNetworkPolicy)
+	return e.Verdict != Deny
 }
 
-func (d *DirectionResult) IsAllowed() bool {
-	return len(d.AllowingTargets) > 0 || len(d.DenyingTargets) == 0
+func (d DirectionResult) highestPriority(kind PolicyKind) Effect {
+	result := Effect{
+		PolicyKind: kind,
+		Priority:   maxInt,
+		Verdict:    None,
+	}
+
+	for _, e := range d {
+		if e.PolicyKind != kind || e.Verdict == None {
+			continue
+		}
+
+		if e.Priority < result.Priority {
+			result = e
+		}
+	}
+
+	return result
 }
 
+// AllowedResult contains information on the final result taken on traffic in a cluster
+// taking into account all ANPs/BANPs and v1 NetPols.
 type AllowedResult struct {
-	Ingress *DirectionResult
-	Egress  *DirectionResult
+	Ingress DirectionResult
+	Egress  DirectionResult
 }
 
 func (ar *AllowedResult) Table() string {
@@ -97,24 +150,17 @@ func (ar *AllowedResult) Table() string {
 	table.SetRowLine(true)
 	table.SetAutoMergeCells(true)
 	table.SetHeader([]string{"Type", "Action", "Target"})
-
-	addTargetsToTable(table, "Ingress", "Allow", ar.Ingress.AllowingTargets)
-	addTargetsToTable(table, "Ingress", "Deny", ar.Ingress.DenyingTargets)
+	// NOTE: broken. This function only used by 1) "cyclonus analyze explain --mode=query-target" and 2) a trace-level log in "cyclonus generate"
+	// Broken since we're changing the DirectionResult struct to use Effects instead of Allowing/DenyingTargets
+	// addTargetsToTable(table, "Ingress", "Allow", ar.Ingress.AllowingTargets)
+	// addTargetsToTable(table, "Ingress", "Deny", ar.Ingress.DenyingTargets)
 	table.Append([]string{"", "", ""})
-	addTargetsToTable(table, "Egress", "Allow", ar.Egress.AllowingTargets)
-	addTargetsToTable(table, "Egress", "Deny", ar.Egress.DenyingTargets)
+	// addTargetsToTable(table, "Egress", "Allow", ar.Egress.AllowingTargets)
+	// addTargetsToTable(table, "Egress", "Deny", ar.Egress.DenyingTargets)
 	table.SetFooter([]string{"Is allowed?", fmt.Sprintf("%t", ar.IsAllowed()), ""})
 
 	table.Render()
 	return tableString.String()
-}
-
-func addTargetsToTable(table *tablewriter.Table, ruleType string, action string, targets []*Target) {
-	sortedTargets := slice.SortOn(func(t *Target) string { return t.GetPrimaryKey() }, targets)
-	for _, t := range sortedTargets {
-		targetString := fmt.Sprintf("namespace: %s\n%s", t.Namespace, kube.LabelSelectorTableLines(t.PodSelector))
-		table.Append([]string{ruleType, action, targetString})
-	}
 }
 
 func (ar *AllowedResult) IsAllowed() bool {
@@ -132,7 +178,7 @@ func (p *Policy) IsTrafficAllowed(traffic *Traffic) *AllowedResult {
 	}
 }
 
-func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) *DirectionResult {
+func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) DirectionResult {
 	var target *TrafficPeer
 	var peer *TrafficPeer
 	if isIngress {
@@ -146,23 +192,26 @@ func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) *Dir
 	// 1. if target is external to cluster -> allow
 	//   this is because we can't stop external hosts from sending or receiving traffic
 	if target.Internal == nil {
-		return &DirectionResult{AllowingTargets: nil, DenyingTargets: nil}
+		return nil
 	}
 
-	matchingTargets := p.TargetsApplyingToPod(isIngress, target.Internal.Namespace, target.Internal.PodLabels)
+	matchingTargets := p.TargetsApplyingToPod(isIngress, target.Internal)
 
 	// 2. No targets match => automatic allow
 	if len(matchingTargets) == 0 {
-		return &DirectionResult{AllowingTargets: nil, DenyingTargets: nil}
+		return nil
 	}
 
 	// 3. Check if any matching targets allow this traffic
-	pair := slice.Partition(func(t *Target) bool {
-		return t.Allows(peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol)
-	}, matchingTargets)
-	allowers, deniers := pair.Fst, pair.Snd
+	effects := make([]Effect, 0)
+	for _, target := range matchingTargets {
+		for _, m := range target.Peers {
+			e := m.Evaluate(peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol)
+			effects = append(effects, e)
+		}
+	}
 
-	return &DirectionResult{AllowingTargets: allowers, DenyingTargets: deniers}
+	return effects
 }
 
 func (p *Policy) Simplify() {
