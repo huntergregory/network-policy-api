@@ -1,14 +1,21 @@
 package matcher
 
 import (
+	"fmt"
+
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
 func BuildNetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy) *Policy {
+	return BuildV2NetworkPolicies(simplify, netpols, nil, nil)
+}
+
+func BuildV2NetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, BANPs []*v1alpha1.BaselineAdminNetworkPolicy) *Policy {
 	np := NewPolicy()
 	for _, policy := range netpols {
 		ingress, egress := BuildTarget(policy)
@@ -19,6 +26,18 @@ func BuildNetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy) 
 			np.AddTarget(false, egress)
 		}
 	}
+
+	for _, anp := range ANPs {
+		// TODO
+		fmt.Printf("TODO: build ANP %s\n", anp.Name)
+	}
+
+	for _, banp := range BANPs {
+		// TODO
+		fmt.Printf("TODO: build ANP %s\n", banp.Name)
+
+	}
+
 	if simplify {
 		np.Simplify()
 	}
@@ -30,6 +49,14 @@ func getPolicyNamespace(policy *networkingv1.NetworkPolicy) string {
 		return v1.NamespaceDefault
 	}
 	return policy.Namespace
+}
+
+func BuildTargetAdmin(netpol *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
+	return nil, nil
+}
+
+func BuildTargetBaselineAdmin(netpol *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Target) {
+	return nil, nil
 }
 
 func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
@@ -45,14 +72,14 @@ func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
 			ingress = &Target{
 				Namespace:   policyNamespace,
 				PodSelector: netpol.Spec.PodSelector,
-				SourceRules: []*networkingv1.NetworkPolicy{netpol},
+				SourceRules: []NetPolID{netPolID(netpol)},
 				Peers:       BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
 			}
 		case networkingv1.PolicyTypeEgress:
 			egress = &Target{
 				Namespace:   policyNamespace,
 				PodSelector: netpol.Spec.PodSelector,
-				SourceRules: []*networkingv1.NetworkPolicy{netpol},
+				SourceRules: []NetPolID{netPolID(netpol)},
 				Peers:       BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
 			}
 		}

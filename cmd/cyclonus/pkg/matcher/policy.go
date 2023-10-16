@@ -2,14 +2,19 @@ package matcher
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/collections/pkg/slice"
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/olekukonko/tablewriter"
 	"golang.org/x/exp/maps"
-	"strings"
 )
 
-// Policy is the root type
+// Policy represents ALL Policies in the cluster (i.e. all ANPs, BANPs, and v1 NetPols, ANPs).
+// A NetPol, ANP, or BANP is translated into an Ingress and/or Egress Target.
+// The (primary) key for these Targets is a string representation of either:
+// a) the Namespace and Pod Selector (for v1 NetPols)
+// b) the Namespace Selector and Pod Selector (for ANPs and BANPs).
 type Policy struct {
 	Ingress map[string]*Target
 	Egress  map[string]*Target

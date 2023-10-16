@@ -2,11 +2,12 @@ package kube
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/collections/pkg/slice"
 	"github.com/mattfenwick/cyclonus/pkg/utils"
 	"golang.org/x/exp/maps"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
 )
 
 // IsNameMatch follows the kube pattern of "empty string means matches All"
@@ -100,6 +101,7 @@ func SerializeLabelSelector(ls metav1.LabelSelector) string {
 	return utils.JsonStringNoIndent([]interface{}{"MatchLabels", keyVals, "MatchExpression", ls.MatchExpressions})
 }
 
+// FIXME
 func LabelSelectorTableLines(selector metav1.LabelSelector) string {
 	if IsLabelSelectorEmpty(selector) {
 		return "all pods"

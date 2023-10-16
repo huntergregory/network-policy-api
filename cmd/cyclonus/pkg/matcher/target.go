@@ -2,19 +2,48 @@ package matcher
 
 import (
 	"fmt"
+
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
-// Target represents a NetworkPolicySpec.PodSelector, which is in a namespace
+// string of the form "[policyKind] namespace/name"
+type NetPolID string
+
+type PolicyKind string
+
+const (
+	NetworkPolicyV1            PolicyKind = "NPv1"
+	AdminNetworkPolicy         PolicyKind = "ANP"
+	BaselineAdminNetworkPolicy PolicyKind = "BANP"
+)
+
+func netPolID(p interface{}) NetPolID {
+	switch p := p.(type) {
+	case *networkingv1.NetworkPolicy:
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", NetworkPolicyV1, p.Namespace, p.Name))
+	case *v1alpha1.AdminNetworkPolicy:
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", AdminNetworkPolicy, p.Namespace, p.Name))
+	case *v1alpha1.BaselineAdminNetworkPolicy:
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", BaselineAdminNetworkPolicy, p.Namespace, p.Name))
+	default:
+		panic(fmt.Sprintf("invalid policy type %T", p))
+	}
+}
+
+// Target represents ingress or egress for one or more NetworkPolicies.
+// It can represent either:
+// a) one or more v1 NetPols sharing the same Namespace and Pod Selector
+// b) one or more ANPs/BANPs sharing the same Namespace Selector and Pod Selector.
 type Target struct {
 	Namespace   string
 	PodSelector metav1.LabelSelector
 	Peers       []PeerMatcher
-	SourceRules []*networkingv1.NetworkPolicy
+	SourceRules []NetPolID
 	primaryKey  string
 }
 
@@ -53,6 +82,7 @@ func (t *Target) Combine(other *Target) *Target {
 	}
 }
 
+// FIXME
 // GetPrimaryKey returns a deterministic combination of PodSelector and namespace
 func (t *Target) GetPrimaryKey() string {
 	if t.primaryKey == "" {

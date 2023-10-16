@@ -2,6 +2,8 @@ package linter
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/collections/pkg/set"
 	"github.com/mattfenwick/collections/pkg/slice"
 	"github.com/mattfenwick/cyclonus/pkg/matcher"
@@ -9,7 +11,6 @@ import (
 	"github.com/olekukonko/tablewriter"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	"strings"
 )
 
 /*
@@ -105,8 +106,12 @@ func (r *resolvedWarning) GetTarget() string {
 }
 
 func (r *resolvedWarning) GetSourcePolicies() string {
-	target := slice.Sort(slice.Map(NetpolKey, r.Target.SourceRules))
-	return strings.Join(target, "\n")
+	sourceRules := slice.Sort(r.Target.SourceRules)
+	sourceRulesStrings := make([]string, len(sourceRules), 0)
+	for _, rule := range sourceRules {
+		sourceRulesStrings = append(sourceRulesStrings, string(rule))
+	}
+	return strings.Join(sourceRulesStrings, "\n")
 }
 
 func WarningsTable(warnings []Warning) string {

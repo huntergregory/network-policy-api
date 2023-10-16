@@ -2,13 +2,13 @@ package matcher
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/collections/pkg/slice"
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/mattfenwick/cyclonus/pkg/utils"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
-	networkingv1 "k8s.io/api/networking/v1"
-	"strings"
 )
 
 type SliceBuilder struct {
@@ -48,12 +48,13 @@ func (s *SliceBuilder) TargetsTableLines(targets []*Target, isIngress bool) {
 		ruleType = "Egress"
 	}
 	for _, target := range targets {
-		sourceRules := slice.Sort(
-			slice.Map(func(sr *networkingv1.NetworkPolicy) string {
-				return fmt.Sprintf("%s/%s", sr.Namespace, sr.Name)
-			}, target.SourceRules))
 		targetString := fmt.Sprintf("namespace: %s\n%s", target.Namespace, kube.LabelSelectorTableLines(target.PodSelector))
-		rules := strings.Join(sourceRules, "\n")
+		sourceRules := slice.Sort(target.SourceRules)
+		sourceRulesStrings := make([]string, len(sourceRules), 0)
+		for _, rule := range sourceRules {
+			sourceRulesStrings = append(sourceRulesStrings, string(rule))
+		}
+		rules := strings.Join(sourceRulesStrings, "\n")
 		s.Prefix = []string{ruleType, targetString, rules}
 
 		if len(target.Peers) == 0 {
