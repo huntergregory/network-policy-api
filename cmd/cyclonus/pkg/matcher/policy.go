@@ -48,7 +48,11 @@ func (p *Policy) AddTargets(isIngress bool, targets []*Target) {
 	}
 }
 
-func (p *Policy) AddTarget(isIngress bool, target *Target) *Target {
+func (p *Policy) AddTarget(isIngress bool, target *Target) {
+	if target == nil {
+		return
+	}
+
 	pk := target.GetPrimaryKey()
 	var dict map[string]*Target
 	if isIngress {
@@ -62,7 +66,6 @@ func (p *Policy) AddTarget(isIngress bool, target *Target) *Target {
 	} else {
 		dict[pk] = target
 	}
-	return dict[pk]
 }
 
 func (p *Policy) TargetsApplyingToPod(isIngress bool, subject *InternalPeer) []*Target {
@@ -81,63 +84,151 @@ func (p *Policy) TargetsApplyingToPod(isIngress bool, subject *InternalPeer) []*
 	return targets
 }
 
-// DirectionResult contains information on the final result taken on traffic in a single direction (ingress or egress)
-// taking into account all ANPs/BANPs and v1 NetPols.
+// DirectionResult contains an Effect for each rule of each v1/v2 NetPol on traffic in a single direction (ingress or egress)
 type DirectionResult []Effect
 
+// IsAllowed returns true if the traffic is allowed after accounting for all v1/v2 NetPols.
 func (d DirectionResult) IsAllowed() bool {
+	anp, npv1, banp := d.Resolve()
+	if anp == nil && npv1 == nil && banp == nil {
+		return true
+	}
+
+	if anp != nil {
+		if anp.Verdict == Allow {
+			return true
+		}
+
+		if anp.Verdict == Deny {
+			return false
+		}
+	}
+
+	if npv1 != nil {
+		return npv1.Verdict == Allow
+	}
+
+	// if banp is nil, then anp was a pass and there are no npv1 rules
+	return banp == nil || banp.Verdict != Deny
+}
+
+// Flow returns a string representation of the flow through ANP, v1 NetPol, and BANP.
+// E.g. "[ANP] Pass -> [BANP] No-Op"
+func (d DirectionResult) Flow() string {
+	anp, npv1, banp := d.Resolve()
+
+	flows := make([]string, 0)
+	if anp != nil {
+		if anp.Verdict == Allow {
+			return "[ANP] Allow"
+		}
+
+		if anp.Verdict == Deny {
+			return "[ANP] Deny"
+		}
+
+		if anp.Verdict == Pass {
+			flows = append(flows, "[ANP] Pass")
+		} else {
+			flows = append(flows, "[ANP] No-Op")
+		}
+	}
+
+	if npv1 != nil {
+		if npv1.Verdict == Allow {
+			flows = append(flows, "[NPv1] Allow")
+		} else {
+			flows = append(flows, "[NPv1] Deny")
+		}
+
+		return strings.Join(flows, " -> ")
+	}
+
+	if banp != nil {
+		if banp.Verdict == Allow {
+			flows = append(flows, "[BANP] Allow")
+		} else if banp.Verdict == Deny {
+			flows = append(flows, "[BANP] Deny")
+		} else {
+			flows = append(flows, "[BANP] No-Op")
+		}
+	}
+
+	return strings.Join(flows, " -> ")
+}
+
+// Resolve returns the final Effect on traffic for ANP, v1 NetPol, and BANP respectively.
+// A nil Effect indicates that there are none of that PolicyKind
+// or e.g. ANP allowed traffic before reaching v1 NetPol and BANP.
+func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 	if d == nil {
-		// No targets match => automatic allow
-		return true
+		return nil, nil, nil
 	}
 
-	// 1. ANPs
-	e := d.highestPriority(AdminNetworkPolicy)
-	if e.Verdict == Allow {
-		return true
+	// 1. ANP rules
+	var anpEffect *Effect
+	for _, e := range d {
+		if e.PolicyKind != AdminNetworkPolicy {
+			continue
+		}
+
+		if anpEffect == nil {
+			anpEffect = &Effect{
+				PolicyKind: AdminNetworkPolicy,
+				Verdict:    None,
+				Priority:   maxInt,
+			}
+		}
+
+		if e.Verdict != None && e.Priority < anpEffect.Priority {
+			anpEffect = &e
+		}
 	}
 
-	if e.Verdict == Deny {
-		return false
+	if anpEffect != nil && (anpEffect.Verdict == Allow || anpEffect.Verdict == Deny) {
+		return anpEffect, nil, nil
 	}
 
-	// 2. v1 NetPols
+	// 2. v1 NetPol rules
+	haveV1NetPols := false
 	for _, e := range d {
 		if e.PolicyKind != NetworkPolicyV1 {
 			continue
 		}
 
+		haveV1NetPols = true
 		if e.Verdict == Allow {
-			return true
+			return anpEffect, &e, nil
 		}
 	}
 
-	// 3. BANPs
-	e = d.highestPriority(BaselineAdminNetworkPolicy)
-	return e.Verdict != Deny
-}
-
-func (d DirectionResult) highestPriority(kind PolicyKind) Effect {
-	result := Effect{
-		PolicyKind: kind,
-		Priority:   maxInt,
-		Verdict:    None,
+	if haveV1NetPols {
+		// the pod is isolated since there are NetPols targeting it, and none of the NetPols allowed traffic
+		e := NewV1Effect(false)
+		return anpEffect, &e, nil
 	}
 
+	// 3. BANP rules
+	var banpEffect *Effect
 	for _, e := range d {
-		if e.PolicyKind != kind || e.Verdict == None {
+		if e.PolicyKind != BaselineAdminNetworkPolicy {
 			continue
 		}
 
-		if e.Priority < result.Priority {
-			result = e
+		if banpEffect == nil {
+			banpEffect = &e
+			continue
+		}
+
+		if e.Verdict != None {
+			return anpEffect, nil, &e
 		}
 	}
 
-	return result
+	return anpEffect, nil, banpEffect
 }
 
-// AllowedResult contains information on the final result taken on traffic in a cluster
+// AllowedResult contains information to calculate the final result taken on traffic in a cluster
 // taking into account all ANPs/BANPs and v1 NetPols.
 type AllowedResult struct {
 	Ingress DirectionResult

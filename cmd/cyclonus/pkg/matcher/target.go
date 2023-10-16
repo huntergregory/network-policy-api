@@ -16,11 +16,23 @@ type NetPolID string
 func netPolID(p interface{}) NetPolID {
 	switch p := p.(type) {
 	case *networkingv1.NetworkPolicy:
-		return NetPolID(fmt.Sprintf("[%s] %s/%s", NetworkPolicyV1, p.Namespace, p.Name))
+		ns := p.Namespace
+		if ns == "" {
+			ns = metav1.NamespaceDefault
+		}
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", NetworkPolicyV1, ns, p.Name))
 	case *v1alpha1.AdminNetworkPolicy:
-		return NetPolID(fmt.Sprintf("[%s] %s/%s", AdminNetworkPolicy, p.Namespace, p.Name))
+		ns := p.Namespace
+		if ns == "" {
+			ns = metav1.NamespaceDefault
+		}
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", AdminNetworkPolicy, ns, p.Name))
 	case *v1alpha1.BaselineAdminNetworkPolicy:
-		return NetPolID(fmt.Sprintf("[%s] %s/%s", BaselineAdminNetworkPolicy, p.Namespace, p.Name))
+		ns := p.Namespace
+		if ns == "" {
+			ns = metav1.NamespaceDefault
+		}
+		return NetPolID(fmt.Sprintf("[%s] %s/%s", BaselineAdminNetworkPolicy, ns, p.Name))
 	default:
 		panic(fmt.Sprintf("invalid policy type %T", p))
 	}
@@ -42,11 +54,17 @@ type Target struct {
 	SubjectSelector
 	primaryKey  string
 	SourceRules []NetPolID
-	Peers       []PeerMatcher
+	// Peers contains all matchers for a Target.
+	// Order matters for ANP-based peers with equal priority (see Verdict for more info)
+	Peers []PeerMatcher
 }
 
 func (t *Target) String() string {
 	return t.GetPrimaryKey()
+}
+
+func (t *Target) Simplify() {
+	t.Peers = Simplify(t.Peers)
 }
 
 // Combine creates a new Target combining the egress and ingress rules
@@ -66,7 +84,7 @@ func (t *Target) Combine(other *Target) *Target {
 	}
 }
 
-// CombineTargetsIgnoringPrimaryKey creates a new target from the given namespace and pod selector,
+// CombineTargetsIgnoringPrimaryKey creates a new v1 target from the given namespace and pod selector,
 // and combines all the edges and source rules from the original targets into the new target.
 func CombineTargetsIgnoringPrimaryKey(namespace string, podSelector metav1.LabelSelector, targets []*Target) *Target {
 	if len(targets) == 0 {
@@ -82,10 +100,6 @@ func CombineTargetsIgnoringPrimaryKey(namespace string, podSelector metav1.Label
 		target.SourceRules = append(target.SourceRules, t.SourceRules...)
 	}
 	return target
-}
-
-func (t *Target) Simplify() {
-	t.Peers = Simplify(t.Peers)
 }
 
 // SubjectSelector defines which Pods a ANP, BANP, or v1 NetPol applies to

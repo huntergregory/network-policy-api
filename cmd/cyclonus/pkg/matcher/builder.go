@@ -1,8 +1,6 @@
 package matcher
 
 import (
-	"fmt"
-
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
@@ -15,27 +13,25 @@ func BuildNetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy) 
 	return BuildV1AndV2NetPols(simplify, netpols, nil, nil)
 }
 
-func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, BANPs []*v1alpha1.BaselineAdminNetworkPolicy) *Policy {
+func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, banp *v1alpha1.BaselineAdminNetworkPolicy) *Policy {
 	np := NewPolicy()
-	for _, policy := range netpols {
-		ingress, egress := BuildTarget(policy)
-		if ingress != nil {
-			np.AddTarget(true, ingress)
-		}
-		if egress != nil {
-			np.AddTarget(false, egress)
-		}
+	for _, p := range netpols {
+		ingress, egress := BuildTarget(p)
+		np.AddTarget(true, ingress)
+		np.AddTarget(false, egress)
 	}
 
-	for _, anp := range ANPs {
-		// TODO
-		fmt.Printf("TODO: build ANP %s\n", anp.Name)
+	for _, p := range ANPs {
+		ingress, egress := BuildTargetANP(p)
+		np.AddTarget(true, ingress)
+		np.AddTarget(false, egress)
 	}
 
-	for _, banp := range BANPs {
-		// TODO
-		fmt.Printf("TODO: build ANP %s\n", banp.Name)
-
+	if banp != nil {
+		// there can only be one BANP by definition
+		ingress, egress := BuildTargetBANP(banp)
+		np.AddTarget(true, ingress)
+		np.AddTarget(false, egress)
 	}
 
 	if simplify {
@@ -51,11 +47,30 @@ func getPolicyNamespace(policy *networkingv1.NetworkPolicy) string {
 	return policy.Namespace
 }
 
-func BuildTargetAdmin(netpol *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
-	return nil, nil
+func BuildTargetANP(netpol *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
+	var ingress *Target
+	var egress *Target
+
+	// for _, r := range netpol.
+	// 	switch pType {
+	// 	case networkingv1.PolicyTypeIngress:
+	// 		ingress = &Target{
+	// 			SubjectSelector: NewSubjectAdmin(&netpol.Spec.Subject),
+	// 			SourceRules:     []NetPolID{netPolID(netpol)},
+	// 			Peers:           BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
+	// 		}
+	// 	case networkingv1.PolicyTypeEgress:
+	// 		egress = &Target{
+	// 			SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
+	// 			SourceRules:     []NetPolID{netPolID(netpol)},
+	// 			Peers:           BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
+	// 		}
+	// 	}
+	// }
+	return ingress, egress
 }
 
-func BuildTargetBaselineAdmin(netpol *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Target) {
+func BuildTargetBANP(netpol *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Target) {
 	return nil, nil
 }
 

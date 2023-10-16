@@ -10,42 +10,41 @@ var (
 	AllPeersPorts = &AllPeersMatcher{}
 )
 
+// Effect is the effect of one or more v1/v2 NetPol rules on a peer.
 type Effect struct {
 	PolicyKind
+	// Priority is only used for ANP (there can only be one BANP).
+	// If priority is equal for two rules, the order of the rules matters, and the first rule wins.
 	Priority int
 	Verdict
 }
 
-var (
-	NoEffect      = Effect{"", 0, None}
-	AllowV1Effect = Effect{NetworkPolicyV1, 0, Allow}
-)
-
 func NewV1Effect(isAllowed bool) Effect {
 	if isAllowed {
-		return AllowV1Effect
+		return Effect{NetworkPolicyV1, 0, Allow}
 	}
-	return NoEffect
+	return Effect{NetworkPolicyV1, 0, Deny}
 }
 
 type Verdict string
 
+// Verdicts for v1 NetPols are Allow or Deny.
+// Verdicts for ANP are None, Allow, Deny, and Pass.
+// Verdicts for BANP are None, Allow, and Deny.
 const (
-	// None is used to indicate that the peer did not match
+	// None is used for ANP/BANP to indicate that the peer did not match.
+	// None can also mean that no
 	None Verdict = "None"
-	// Allow is used to indicate that the peer allowed the traffic. Priorities become relevant for ANP/BANP
+	// Allow is used to indicate that the peer allowed the traffic.
+	// Priorities become relevant for ANP.
 	Allow Verdict = "Allow"
-	// Deny is used for ANP/BANP to indicate that the peer explicitly denied the traffic. Priorities are relevant.
-	// Deny is not used in v1 NetPol.
+	// Deny is used for v1 NetPol when the Verdict is not Allow.
+	// Deny is used for ANP/BANP to indicate that the peer explicitly denied the traffic.
+	// Priorities become relevant for ANP.
 	Deny Verdict = "Deny"
 	// Pass is used for ANP to indicate that the peer passes the traffic down to v1 NetPol. Priorities are relevant.
-	// Pass is not used in BANP or v1 NetPol.
 	Pass Verdict = "Pass"
 )
-
-func (v Verdict) v1Bool() bool {
-	return v == Allow
-}
 
 type PeerMatcher interface {
 	Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect
@@ -54,7 +53,7 @@ type PeerMatcher interface {
 type AllPeersMatcher struct{}
 
 func (a *AllPeersMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
-	return AllowV1Effect
+	return Effect{NetworkPolicyV1, 0, Allow}
 }
 
 func (a *AllPeersMatcher) MarshalJSON() (b []byte, e error) {
