@@ -26,11 +26,13 @@ func (p *Policy) ExplainTable() string {
 	table.SetAutoWrapText(false)
 	table.SetRowLine(true)
 	table.SetAutoMergeCells(true)
+	// FIXME add action/priority column
 	table.SetHeader([]string{"Type", "Target", "Source rules", "Peer", "Port/Protocol"})
 
 	builder := &SliceBuilder{}
 	ingresses, egresses := p.SortedTargets()
 	builder.TargetsTableLines(ingresses, true)
+	// FIXME add action/priority column
 	builder.Elements = append(builder.Elements, []string{"", "", "", "", ""})
 	builder.TargetsTableLines(egresses, false)
 
@@ -85,13 +87,14 @@ func (s *SliceBuilder) IPPeerMatcherTableLines(ip *IPPeerMatcher) {
 }
 
 func (s *SliceBuilder) PodPeerMatcherTableLines(nsPodMatcher *PodPeerMatcher) {
+	// FIXME add action/priority column
 	var namespaces string
 	switch ns := nsPodMatcher.Namespace.(type) {
 	case *AllNamespaceMatcher:
 		namespaces = "all"
 	case *LabelSelectorNamespaceMatcher:
 		namespaces = kube.LabelSelectorTableLines(ns.Selector)
-	// FIXME handle SameLabels
+	// FIXME handle SameLabels, NotSameLabels
 	case *ExactNamespaceMatcher:
 		namespaces = ns.Namespace
 	default:

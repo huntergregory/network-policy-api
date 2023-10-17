@@ -124,7 +124,11 @@ func (s *SubjectV1) Matches(candidate *InternalPeer) bool {
 }
 
 func (s *SubjectV1) TargetString() string {
-	return fmt.Sprintf("namespace: %s\n%s", s.namespace, kube.LabelSelectorTableLines(s.podSelector))
+	pods := kube.LabelSelectorTableLines(s.podSelector)
+	if pods == "all" {
+		pods = "all pods"
+	}
+	return fmt.Sprintf("namespace: %s\n%s", s.namespace, pods)
 }
 
 func (s *SubjectV1) GetPrimaryKey() string {

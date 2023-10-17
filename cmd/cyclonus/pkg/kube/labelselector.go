@@ -101,10 +101,9 @@ func SerializeLabelSelector(ls metav1.LabelSelector) string {
 	return utils.JsonStringNoIndent([]interface{}{"MatchLabels", keyVals, "MatchExpression", ls.MatchExpressions})
 }
 
-// FIXME
 func LabelSelectorTableLines(selector metav1.LabelSelector) string {
 	if IsLabelSelectorEmpty(selector) {
-		return "all pods"
+		return "all"
 	}
 	var lines []string
 	if len(selector.MatchLabels) > 0 {

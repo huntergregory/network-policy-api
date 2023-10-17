@@ -22,8 +22,8 @@ func (ppm *PodPeerMatcher) PrimaryKey() string {
 }
 
 func (ppm *PodPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
-	return !peer.IsExternal() && ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
-		ppm.Pod.Allows(peer.Internal.PodLabels) &&
+	return !peer.IsExternal() && ppm.Namespace.Matches(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
+		ppm.Pod.Matches(peer.Internal.PodLabels) &&
 		ppm.Port.Matches(portInt, portName, protocol)
 }
 
@@ -66,13 +66,13 @@ func (ppm *PodPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName stri
 //
 
 type PodMatcher interface {
-	Allows(podLabels map[string]string) bool
+	Matches(podLabels map[string]string) bool
 	PrimaryKey() string
 }
 
 type AllPodMatcher struct{}
 
-func (p *AllPodMatcher) Allows(podLabels map[string]string) bool {
+func (p *AllPodMatcher) Matches(podLabels map[string]string) bool {
 	return true
 }
 
@@ -90,7 +90,7 @@ type LabelSelectorPodMatcher struct {
 	Selector metav1.LabelSelector
 }
 
-func (p *LabelSelectorPodMatcher) Allows(podLabels map[string]string) bool {
+func (p *LabelSelectorPodMatcher) Matches(podLabels map[string]string) bool {
 	return kube.IsLabelsMatchLabelSelector(podLabels, p.Selector)
 }
 
@@ -108,7 +108,7 @@ func (p *LabelSelectorPodMatcher) PrimaryKey() string {
 // namespaces
 
 type NamespaceMatcher interface {
-	Allows(namespace string, namespaceLabels map[string]string) bool
+	Matches(namespace string, namespaceLabels map[string]string) bool
 	PrimaryKey() string
 }
 
@@ -116,7 +116,7 @@ type ExactNamespaceMatcher struct {
 	Namespace string
 }
 
-func (p *ExactNamespaceMatcher) Allows(namespace string, namespaceLabels map[string]string) bool {
+func (p *ExactNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
 	return p.Namespace == namespace
 }
 
@@ -135,7 +135,7 @@ type LabelSelectorNamespaceMatcher struct {
 	Selector metav1.LabelSelector
 }
 
-func (p *LabelSelectorNamespaceMatcher) Allows(namespace string, namespaceLabels map[string]string) bool {
+func (p *LabelSelectorNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
 	return kube.IsLabelsMatchLabelSelector(namespaceLabels, p.Selector)
 }
 
@@ -152,7 +152,7 @@ func (p *LabelSelectorNamespaceMatcher) PrimaryKey() string {
 
 type AllNamespaceMatcher struct{}
 
-func (a *AllNamespaceMatcher) Allows(namespace string, namespaceLabels map[string]string) bool {
+func (a *AllNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
 	return true
 }
 

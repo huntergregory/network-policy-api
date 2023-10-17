@@ -85,12 +85,7 @@ func (p *Policy) TargetsApplyingToPod(isIngress bool, subject *InternalPeer) []*
 }
 
 // DirectionResult contains information about each rule of each v1/v2 NetPol on traffic in a single direction (ingress or egress)
-type DirectionResult []matchEffect
-
-type matchEffect struct {
-	Effect
-	Matched bool
-}
+type DirectionResult []Effect
 
 // IsAllowed returns true if the traffic is allowed after accounting for all v1/v2 NetPols.
 func (d DirectionResult) IsAllowed() bool {
@@ -143,7 +138,7 @@ func (d DirectionResult) Flow() string {
 		if npv1.Verdict == Allow {
 			flows = append(flows, "[NPv1] Allow")
 		} else {
-			flows = append(flows, "[NPv1] Deny")
+			flows = append(flows, "[NPv1] Dropped")
 		}
 
 		return strings.Join(flows, " -> ")
@@ -172,8 +167,8 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 	// 1. ANP rules
 	var anpEffect *Effect
-	for _, me := range d {
-		if me.PolicyKind != AdminNetworkPolicy || !me.Matched {
+	for _, e := range d {
+		if e.PolicyKind != AdminNetworkPolicy {
 			continue
 		}
 
@@ -185,8 +180,8 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 			}
 		}
 
-		if me.Verdict != None && me.Priority < anpEffect.Priority {
-			anpEffect = &me.Effect
+		if e.Verdict != None && e.Priority < anpEffect.Priority {
+			anpEffect = &e
 		}
 	}
 
@@ -196,37 +191,36 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 	// 2. v1 NetPol rules
 	haveV1NetPols := false
-	for _, me := range d {
-		if me.PolicyKind != NetworkPolicyV1 || !me.Matched {
+	for _, e := range d {
+		if e.PolicyKind != NetworkPolicyV1 {
 			continue
 		}
 
 		haveV1NetPols = true
-		if me.Verdict == Allow {
-			return anpEffect, &me.Effect, nil
+		if e.Verdict == Allow {
+			return anpEffect, &e, nil
 		}
 	}
 
 	if haveV1NetPols {
-		// the pod is isolated since there are NetPols targeting it, and none of the NetPols allowed traffic
 		e := NewV1Effect(false)
 		return anpEffect, &e, nil
 	}
 
 	// 3. BANP rules
 	var banpEffect *Effect
-	for _, me := range d {
-		if me.PolicyKind != BaselineAdminNetworkPolicy || !me.Matched {
+	for _, e := range d {
+		if e.PolicyKind != BaselineAdminNetworkPolicy {
 			continue
 		}
 
 		if banpEffect == nil {
-			banpEffect = &me.Effect
+			banpEffect = &e
 			continue
 		}
 
-		if me.Verdict != None {
-			return anpEffect, nil, &me.Effect
+		if e.Verdict != None {
+			return anpEffect, nil, &e
 		}
 	}
 
@@ -302,7 +296,17 @@ func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) Dire
 	effects := make([]Effect, 0)
 	for _, target := range matchingTargets {
 		for _, m := range target.Peers {
-			e := m.Matches(peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol)
+			// check if m is a PeerMatcherV2
+			e := NewV1Effect(true)
+			matcherV2, ok := m.(PeerMatcherV2)
+			if ok {
+				e = matcherV2.effectFromMatch
+			}
+
+			if !m.Matches(peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol) {
+				e.Verdict = None
+			}
+
 			effects = append(effects, e)
 		}
 	}

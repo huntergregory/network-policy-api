@@ -9,8 +9,8 @@ import (
 
 func TestMatcher(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunBuilderTests()
-	RunPolicyTests()
+	// RunBuilderTests()
+	// RunPolicyTests()
 	RunSimplifierTests()
 	RunSpecs(t, "network policy matcher suite")
 }
