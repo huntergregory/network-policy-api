@@ -161,7 +161,7 @@ func RunBuilderTests() {
 					Port: port53UDPMatcher,
 				}}))
 
-			Expect(ip.Evaluate(&TrafficPeer{IP: "192.168.242.249"}, 80, "", tcp)).To(Equal(Effect{NetworkPolicyV1, 0, Allow}))
+			Expect(ip.Matches(&TrafficPeer{IP: "192.168.242.249"}, 80, "", tcp)).To(Equal(Effect{NetworkPolicyV1, 0, Allow}))
 		})
 	})
 

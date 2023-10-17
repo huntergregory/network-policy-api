@@ -91,6 +91,7 @@ func (s *SliceBuilder) PodPeerMatcherTableLines(nsPodMatcher *PodPeerMatcher) {
 		namespaces = "all"
 	case *LabelSelectorNamespaceMatcher:
 		namespaces = kube.LabelSelectorTableLines(ns.Selector)
+	// FIXME handle SameLabels
 	case *ExactNamespaceMatcher:
 		namespaces = ns.Namespace
 	default:

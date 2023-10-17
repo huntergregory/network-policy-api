@@ -58,15 +58,15 @@ func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
 		switch pType {
 		case networkingv1.PolicyTypeIngress:
 			ingress = &Target{
-				SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
-				SourceRules:     []NetPolID{netPolID(netpol)},
-				Peers:           BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
+				SubjectMatcher: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
+				SourceRules:    []NetPolID{netPolID(netpol)},
+				Peers:          BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
 			}
 		case networkingv1.PolicyTypeEgress:
 			egress = &Target{
-				SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
-				SourceRules:     []NetPolID{netPolID(netpol)},
-				Peers:           BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
+				SubjectMatcher: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
+				SourceRules:    []NetPolID{netPolID(netpol)},
+				Peers:          BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
 			}
 		}
 	}
@@ -209,8 +209,8 @@ func BuildTargetANP(anp *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
 
 	if len(anp.Spec.Ingress) > 0 {
 		ingress = &Target{
-			SubjectSelector: NewSubjectAdmin(&anp.Spec.Subject),
-			SourceRules:     []NetPolID{netPolID(anp)},
+			SubjectMatcher: NewSubjectAdmin(&anp.Spec.Subject),
+			SourceRules:    []NetPolID{netPolID(anp)},
 		}
 
 		for _, r := range anp.Spec.Ingress {
@@ -222,8 +222,8 @@ func BuildTargetANP(anp *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
 
 	if len(anp.Spec.Egress) > 0 {
 		egress = &Target{
-			SubjectSelector: NewSubjectAdmin(&anp.Spec.Subject),
-			SourceRules:     []NetPolID{netPolID(anp)},
+			SubjectMatcher: NewSubjectAdmin(&anp.Spec.Subject),
+			SourceRules:    []NetPolID{netPolID(anp)},
 		}
 
 		for _, r := range anp.Spec.Egress {
@@ -246,8 +246,8 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 
 	if len(banp.Spec.Ingress) > 0 {
 		ingress = &Target{
-			SubjectSelector: NewSubjectAdmin(&banp.Spec.Subject),
-			SourceRules:     []NetPolID{netPolID(banp)},
+			SubjectMatcher: NewSubjectAdmin(&banp.Spec.Subject),
+			SourceRules:    []NetPolID{netPolID(banp)},
 		}
 
 		for _, r := range banp.Spec.Ingress {
@@ -259,8 +259,8 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 
 	if len(banp.Spec.Egress) > 0 {
 		egress = &Target{
-			SubjectSelector: NewSubjectAdmin(&banp.Spec.Subject),
-			SourceRules:     []NetPolID{netPolID(banp)},
+			SubjectMatcher: NewSubjectAdmin(&banp.Spec.Subject),
+			SourceRules:    []NetPolID{netPolID(banp)},
 		}
 
 		for _, r := range banp.Spec.Egress {
@@ -298,7 +298,7 @@ func BuildPeerMatcherAdmin(v Verdict, peers []v1alpha1.AdminNetworkPolicyPeer, p
 		if peer.Pods != nil {
 			ns = peer.Pods.Namespaces
 
-			// TODO account for Tenancy or Pod same/not-same labels when developed in the future
+			// TODO account for Tenancy or Pod same/not-same labels when these become features
 			podSel := peer.Pods.PodSelector
 			if kube.IsLabelSelectorEmpty(podSel) {
 				podMatcher = &AllPodMatcher{}

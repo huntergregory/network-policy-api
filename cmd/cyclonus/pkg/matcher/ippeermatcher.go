@@ -11,8 +11,8 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
-// IPPeerMatcher models the case where IPBlock is not nil, and both
-// PodSelector and NamespaceSelector are nil
+// IPPeerMatcher matches traffic to CIDR blocks.
+// It is only relevant to v1 NetPols.
 type IPPeerMatcher struct {
 	IPBlock *networkingv1.IPBlock
 	Port    PortMatcher
@@ -35,11 +35,12 @@ func (i *IPPeerMatcher) MarshalJSON() (b []byte, e error) {
 	})
 }
 
-func (i *IPPeerMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
+func (i *IPPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
 	isIpMatch, err := kube.IsIPAddressMatchForIPBlock(peer.IP, i.IPBlock)
 	// TODO propagate this error instead of panic
 	if err != nil {
 		panic(err)
 	}
-	return NewV1Effect(isIpMatch && i.Port.Matches(portInt, portName, protocol))
+
+	return isIpMatch && i.Port.Matches(portInt, portName, protocol)
 }

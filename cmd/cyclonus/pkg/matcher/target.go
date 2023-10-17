@@ -38,20 +38,12 @@ func netPolID(p interface{}) NetPolID {
 	}
 }
 
-type PolicyKind string
-
-const (
-	NetworkPolicyV1            PolicyKind = "NPv1"
-	AdminNetworkPolicy         PolicyKind = "ANP"
-	BaselineAdminNetworkPolicy PolicyKind = "BANP"
-)
-
 // Target represents ingress or egress for one or more NetworkPolicies.
 // It can represent either:
 // a) one or more v1 NetPols sharing the same Namespace and Pod Selector
 // b) one or more ANPs/BANPs sharing the same Namespace Selector and Pod Selector.
 type Target struct {
-	SubjectSelector
+	SubjectMatcher
 	primaryKey  string
 	SourceRules []NetPolID
 	// Peers contains all matchers for a Target.
@@ -78,9 +70,9 @@ func (t *Target) Combine(other *Target) *Target {
 	}
 
 	return &Target{
-		SubjectSelector: t.SubjectSelector,
-		Peers:           append(t.Peers, other.Peers...),
-		SourceRules:     append(t.SourceRules, other.SourceRules...),
+		SubjectMatcher: t.SubjectMatcher,
+		Peers:          append(t.Peers, other.Peers...),
+		SourceRules:    append(t.SourceRules, other.SourceRules...),
 	}
 }
 
@@ -91,9 +83,9 @@ func CombineTargetsIgnoringPrimaryKey(namespace string, podSelector metav1.Label
 		return nil
 	}
 	target := &Target{
-		SubjectSelector: NewSubjectV1(namespace, podSelector),
-		Peers:           targets[0].Peers,
-		SourceRules:     targets[0].SourceRules,
+		SubjectMatcher: NewSubjectV1(namespace, podSelector),
+		Peers:          targets[0].Peers,
+		SourceRules:    targets[0].SourceRules,
 	}
 	for _, t := range targets[1:] {
 		target.Peers = append(target.Peers, t.Peers...)
@@ -102,10 +94,10 @@ func CombineTargetsIgnoringPrimaryKey(namespace string, podSelector metav1.Label
 	return target
 }
 
-// SubjectSelector defines which Pods a ANP, BANP, or v1 NetPol applies to
-type SubjectSelector interface {
-	// IsMatch returns true if the candidate satisfies the subject selector
-	IsMatch(candidate *InternalPeer) bool
+// SubjectMatcher defines which Pods a ANP, BANP, or v1 NetPol applies to
+type SubjectMatcher interface {
+	// Matches returns true if the candidate satisfies the subject selector
+	Matches(candidate *InternalPeer) bool
 	// TargetString is used for printing in tables
 	TargetString() string
 	// GetPrimaryKey serializes the subject selector into a json-like string
@@ -127,7 +119,7 @@ func NewSubjectV1(namespace string, podSelector metav1.LabelSelector) *SubjectV1
 	}
 }
 
-func (s *SubjectV1) IsMatch(candidate *InternalPeer) bool {
+func (s *SubjectV1) Matches(candidate *InternalPeer) bool {
 	return s.namespace == candidate.Namespace && kube.IsLabelsMatchLabelSelector(candidate.PodLabels, s.podSelector)
 }
 
@@ -160,7 +152,7 @@ func NewSubjectAdmin(subject *v1alpha1.AdminNetworkPolicySubject) *SubjectAdmin 
 	return s
 }
 
-func (s *SubjectAdmin) IsMatch(candidate *InternalPeer) bool {
+func (s *SubjectAdmin) Matches(candidate *InternalPeer) bool {
 	if (s.subject.Namespaces == nil && s.subject.Pods == nil) || (s.subject.Namespaces != nil && s.subject.Pods != nil) {
 		// unexpected since there should be exactly one of Namespaces or Pods
 		return false

@@ -6,6 +6,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// TODO understand this and go from there, then make same labels
 func Simplify(matchers []PeerMatcher) []PeerMatcher {
 	matchesAll := false
 	var portsForAllPeersMatchers []*PortsForAllPeersMatcher

@@ -15,66 +15,16 @@ type PodPeerMatcher struct {
 	Namespace NamespaceMatcher
 	Pod       PodMatcher
 	Port      PortMatcher
-	// v2Kind is used for ANP/BANP.
-	// v1 NetPol should not use this field.
-	v2Kind PolicyKind
-	// v2Verdict is used for ANP/BANP.
-	// v1 NetPol should not use this field.
-	v2Verdict Verdict
-	// v2Priority is used for ANP.
-	// v1 NetPol and BANP should not use this field.
-	v2Priority int
-}
-
-// NewPodPeerMatcherANP creates a new PodPeerMatcher for an ANP rule.
-func NewPodPeerMatcherANP(ns NamespaceMatcher, pod PodMatcher, port PortMatcher, v Verdict, priority int) *PodPeerMatcher {
-	return &PodPeerMatcher{
-		Namespace:  ns,
-		Pod:        pod,
-		Port:       port,
-		v2Kind:     AdminNetworkPolicy,
-		v2Verdict:  v,
-		v2Priority: priority,
-	}
-}
-
-// NewPodPeerMatcherANP creates a new PodPeerMatcher for a BANP rule.
-func NewPodPeerMatcherBANP(ns NamespaceMatcher, pod PodMatcher, port PortMatcher, v Verdict) *PodPeerMatcher {
-	return &PodPeerMatcher{
-		Namespace: ns,
-		Pod:       pod,
-		Port:      port,
-		v2Kind:    BaselineAdminNetworkPolicy,
-		v2Verdict: v,
-	}
 }
 
 func (ppm *PodPeerMatcher) PrimaryKey() string {
 	return ppm.Namespace.PrimaryKey() + "---" + ppm.Pod.PrimaryKey()
 }
 
-func (ppm *PodPeerMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
-	isMatch := !peer.IsExternal() && ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
+func (ppm *PodPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+	return !peer.IsExternal() && ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
 		ppm.Pod.Allows(peer.Internal.PodLabels) &&
 		ppm.Port.Matches(portInt, portName, protocol)
-
-	if ppm.v2Verdict != "" && ppm.v2Kind != "" {
-		// ANP or BANP rule
-		e := Effect{
-			PolicyKind: ppm.v2Kind,
-			Priority:   ppm.v2Priority,
-			Verdict:    None,
-		}
-
-		if isMatch {
-			e.Verdict = ppm.v2Verdict
-		}
-
-		return e
-	}
-
-	// v1 NetPol rule
-	return NewV1Effect(isMatch)
 }
 
 // PodMatcher possibilities:
