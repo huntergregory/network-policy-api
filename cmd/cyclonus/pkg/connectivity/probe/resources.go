@@ -1,6 +1,8 @@
 package probe
 
 import (
+	"time"
+
 	"github.com/mattfenwick/collections/pkg/slice"
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/pkg/errors"
@@ -8,13 +10,14 @@ import (
 	"golang.org/x/exp/maps"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"time"
 )
 
 type Resources struct {
 	Namespaces map[string]map[string]string
 	Pods       []*Pod
 	//ExternalIPs []string
+	ports     []int
+	protocols []v1.Protocol
 }
 
 func NewDefaultResources(kubernetes kube.IKubernetes, namespaces []string, podNames []string, ports []int, protocols []v1.Protocol, externalIPs []string, podCreationTimeoutSeconds int, batchJobs bool) (*Resources, error) {
@@ -23,6 +26,8 @@ func NewDefaultResources(kubernetes kube.IKubernetes, namespaces []string, podNa
 	r := &Resources{
 		Namespaces: map[string]map[string]string{},
 		//ExternalIPs: externalIPs,
+		ports:     ports,
+		protocols: protocols,
 	}
 
 	for _, ns := range namespaces {
