@@ -61,7 +61,7 @@ func AdminActionToVerdict(action v1alpha1.AdminNetworkPolicyRuleAction) Verdict 
 	}
 }
 
-func BasaelineAdminActionToVerdict(action v1alpha1.BaselineAdminNetworkPolicyRuleAction) Verdict {
+func BaselineAdminActionToVerdict(action v1alpha1.BaselineAdminNetworkPolicyRuleAction) Verdict {
 	switch action {
 	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
 		return Allow
@@ -84,9 +84,15 @@ These are the original PeerMatcher implementations made for v1 NetPol:
 All of these (except AllPeersMatcher) use a PortMatcher.
 If the traffic doesn't match the port matcher, then the matcher will Evaluate to a Verdict of None (or Deny for v1 NetPol).
 
-For v2 NetPol, all the above PeerMatchers are irrelevant except for PodPeerMatcher.
+For v2 NetPol, all the above PeerMatchers are irrelevant except for PodPeerMatcher. We expand on PodPeerMatcher to account for SameLabels, etc.
 
-TODO
+We introduce:
+- V2PeerMatcher (wrapper for PodPeerMatcher)
+- LabelSelectorNamespaceMatcher (a NamespaceMatcher used within PodPeerMatcher)
+- SameLabelsNamespaceMatcher (a NamespaceMatcher used within PodPeerMatcher)
+- NotSameLabelsNamespaceMatcher (a NamespaceMatcher used within PodPeerMatcher)
+
+Eventually, we will need to modify PodMatcher to account for Tenancy or Pod same/not-same labels when developed in the future.
 */
 type PeerMatcher interface {
 	Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect

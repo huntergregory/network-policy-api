@@ -251,7 +251,7 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 		}
 
 		for _, r := range banp.Spec.Ingress {
-			v := BasaelineAdminActionToVerdict(r.Action)
+			v := BaselineAdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(v, r.From, r.Ports)
 			ingress.Peers = append(ingress.Peers, matchers...)
 		}
@@ -264,7 +264,7 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 		}
 
 		for _, r := range banp.Spec.Egress {
-			v := BasaelineAdminActionToVerdict(r.Action)
+			v := BaselineAdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(v, r.To, r.Ports)
 			egress.Peers = append(egress.Peers, matchers...)
 		}
@@ -293,17 +293,42 @@ func BuildPeerMatcherAdmin(v Verdict, peers []v1alpha1.AdminNetworkPolicyPeer, p
 			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
 		}
 
-		if peer.Namespaces != nil {
+		var ns v1alpha1.NamespacedPeer
+		var podMatcher PodMatcher
+		if peer.Pods != nil {
+			ns = peer.Pods.Namespaces
 
+			// TODO account for Tenancy or Pod same/not-same labels when developed in the future
+			podSel := peer.Pods.PodSelector
+			if kube.IsLabelSelectorEmpty(podSel) {
+				podMatcher = &AllPodMatcher{}
+			} else {
+				podMatcher = &LabelSelectorPodMatcher{Selector: podSel}
+			}
 		} else {
-
+			// peer.Namespaces is non-nil
+			ns = *peer.Namespaces
 		}
 
-		// TODO validate Namespaced Peer has exactly one
-		// TODO
+		if nonNilCount(ns.NamespaceSelector, ns.SameLabels, ns.NotSameLabels) != 1 {
+			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
+		}
 
-		m := &PodPeerMatcher{}
-		m.Port = portMatcher
+		var nsMatcher NamespaceMatcher
+		if ns.NamespaceSelector != nil {
+			// TODO ns matcher based on ns.NamespaceSelector
+		} else if ns.SameLabels != nil {
+			// TODO ns matcher based on ns.SameLabels
+		} else {
+			// ns.NotSameLabels is non-nil
+			// TODO ns matcher based on ns.NotSameLabels
+		}
+
+		m := &PodPeerMatcher{
+			Namespace: nsMatcher,
+			Pod:       podMatcher,
+			Port:      portMatcher,
+		}
 		peerMatchers = append(peerMatchers, m)
 	}
 
