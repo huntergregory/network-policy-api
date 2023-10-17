@@ -117,8 +117,10 @@ func PortMatcherTableLines(pm PortMatcher) []string {
 		for _, portProtocol := range port.Ports {
 			if portProtocol.Port == nil {
 				lines = append(lines, "all ports on protocol "+string(portProtocol.Protocol))
+			} else if portProtocol.Port.StrVal != "" {
+				lines = append(lines, fmt.Sprintf("namedport '%s'", portProtocol.Port.StrVal))
 			} else {
-				lines = append(lines, "port "+portProtocol.Port.String()+" on protocol "+string(portProtocol.Protocol))
+				lines = append(lines, fmt.Sprintf("port %d on protocol %s", portProtocol.Port.IntVal, portProtocol.Protocol))
 			}
 		}
 		for _, portRange := range port.PortRanges {

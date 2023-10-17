@@ -41,5 +41,5 @@ func (i *IPPeerMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string
 	if err != nil {
 		panic(err)
 	}
-	return NewV1Effect(isIpMatch && i.Port.Allows(portInt, portName, protocol))
+	return NewV1Effect(isIpMatch && i.Port.Matches(portInt, portName, protocol))
 }

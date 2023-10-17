@@ -47,33 +47,6 @@ func getPolicyNamespace(policy *networkingv1.NetworkPolicy) string {
 	return policy.Namespace
 }
 
-func BuildTargetANP(netpol *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
-	var ingress *Target
-	var egress *Target
-
-	// for _, r := range netpol.
-	// 	switch pType {
-	// 	case networkingv1.PolicyTypeIngress:
-	// 		ingress = &Target{
-	// 			SubjectSelector: NewSubjectAdmin(&netpol.Spec.Subject),
-	// 			SourceRules:     []NetPolID{netPolID(netpol)},
-	// 			Peers:           BuildIngressMatcher(policyNamespace, netpol.Spec.Ingress),
-	// 		}
-	// 	case networkingv1.PolicyTypeEgress:
-	// 		egress = &Target{
-	// 			SubjectSelector: NewSubjectV1(policyNamespace, netpol.Spec.PodSelector),
-	// 			SourceRules:     []NetPolID{netPolID(netpol)},
-	// 			Peers:           BuildEgressMatcher(policyNamespace, netpol.Spec.Egress),
-	// 		}
-	// 	}
-	// }
-	return ingress, egress
-}
-
-func BuildTargetBANP(netpol *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Target) {
-	return nil, nil
-}
-
 func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
 	var ingress *Target
 	var egress *Target
@@ -224,4 +197,203 @@ func BuildSinglePortMatcher(npPort networkingv1.NetworkPolicyPort) (*PortProtoco
 		To:       int(*npPort.EndPort),
 		Protocol: protocol,
 	}
+}
+
+func BuildTargetANP(anp *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
+	if len(anp.Spec.Ingress) == 0 && len(anp.Spec.Egress) == 0 {
+		panic(errors.Errorf("invalid network policy: need at least one egress or ingress rule"))
+	}
+
+	var ingress *Target
+	var egress *Target
+
+	if len(anp.Spec.Ingress) > 0 {
+		ingress = &Target{
+			SubjectSelector: NewSubjectAdmin(&anp.Spec.Subject),
+			SourceRules:     []NetPolID{netPolID(anp)},
+		}
+
+		for _, r := range anp.Spec.Ingress {
+			v := AdminActionToVerdict(r.Action)
+			matchers := BuildPeerMatcherAdmin(v, r.From, r.Ports)
+			ingress.Peers = append(ingress.Peers, matchers...)
+		}
+	}
+
+	if len(anp.Spec.Egress) > 0 {
+		egress = &Target{
+			SubjectSelector: NewSubjectAdmin(&anp.Spec.Subject),
+			SourceRules:     []NetPolID{netPolID(anp)},
+		}
+
+		for _, r := range anp.Spec.Egress {
+			v := AdminActionToVerdict(r.Action)
+			matchers := BuildPeerMatcherAdmin(v, r.To, r.Ports)
+			egress.Peers = append(egress.Peers, matchers...)
+		}
+	}
+
+	return ingress, egress
+}
+
+func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Target) {
+	if len(banp.Spec.Ingress) == 0 && len(banp.Spec.Egress) == 0 {
+		panic(errors.Errorf("invalid network policy: need at least one egress or ingress rule"))
+	}
+
+	var ingress *Target
+	var egress *Target
+
+	if len(banp.Spec.Ingress) > 0 {
+		ingress = &Target{
+			SubjectSelector: NewSubjectAdmin(&banp.Spec.Subject),
+			SourceRules:     []NetPolID{netPolID(banp)},
+		}
+
+		for _, r := range banp.Spec.Ingress {
+			v := BasaelineAdminActionToVerdict(r.Action)
+			matchers := BuildPeerMatcherAdmin(v, r.From, r.Ports)
+			ingress.Peers = append(ingress.Peers, matchers...)
+		}
+	}
+
+	if len(banp.Spec.Egress) > 0 {
+		egress = &Target{
+			SubjectSelector: NewSubjectAdmin(&banp.Spec.Subject),
+			SourceRules:     []NetPolID{netPolID(banp)},
+		}
+
+		for _, r := range banp.Spec.Egress {
+			v := BasaelineAdminActionToVerdict(r.Action)
+			matchers := BuildPeerMatcherAdmin(v, r.To, r.Ports)
+			egress.Peers = append(egress.Peers, matchers...)
+		}
+	}
+
+	return ingress, egress
+}
+
+func BuildPeerMatcherAdmin(v Verdict, peers []v1alpha1.AdminNetworkPolicyPeer, ports *[]v1alpha1.AdminNetworkPolicyPort) []PeerMatcher {
+	if len(peers) == 0 {
+		panic(errors.Errorf("invalid admin to/from field: must have at least one peer"))
+	}
+
+	// 1. build port matcher
+	var portMatcher PortMatcher
+	if ports == nil {
+		portMatcher = BuildPortMatcherAdmin(nil)
+	} else {
+		portMatcher = BuildPortMatcherAdmin(*ports)
+	}
+
+	// 2. build Peers
+	var peerMatchers []PeerMatcher
+	for _, peer := range peers {
+		if nonNilCount(peer.Namespaces == nil, peer.Pods == nil) != 1 {
+			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
+		}
+
+		if peer.Namespaces != nil {
+
+		} else {
+
+		}
+
+		// TODO validate Namespaced Peer has exactly one
+		// TODO
+
+		m := &PodPeerMatcher{}
+		m.Port = portMatcher
+		peerMatchers = append(peerMatchers, m)
+	}
+
+	return peerMatchers
+}
+
+func BuildPortMatcherAdmin(ports []v1alpha1.AdminNetworkPolicyPort) PortMatcher {
+	if len(ports) == 0 {
+		return &AllPortMatcher{}
+	} else {
+		matcher := &SpecificPortMatcher{}
+		for _, p := range ports {
+			singlePort, portRange := BuildSinglePortMatcherAdmin(p)
+			if singlePort != nil {
+				matcher.Ports = append(matcher.Ports, singlePort)
+			} else {
+				matcher.PortRanges = append(matcher.PortRanges, portRange)
+			}
+		}
+		return matcher
+	}
+}
+
+func BuildSinglePortMatcherAdmin(port v1alpha1.AdminNetworkPolicyPort) (*PortProtocolMatcher, *PortRangeMatcher) {
+	if nonNilCount(port.PortNumber, port.NamedPort, port.PortRange) != 1 {
+		panic(errors.Errorf("invalid port: must have exactly one of PortNumber, NamedPort, or PortRange"))
+	}
+
+	if port.PortNumber != nil {
+		// default is TCP if protocol field is empty
+		proto := v1.ProtocolTCP
+		if port.PortNumber.Protocol != "" {
+			proto = port.PortNumber.Protocol
+		}
+
+		m := &PortProtocolMatcher{
+			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: port.PortNumber.Port},
+			Protocol: proto,
+		}
+
+		return m, nil
+	}
+
+	if port.NamedPort != nil {
+		// determine protocol from the named port name based on the fact that all of the server's named ports have the same protocol
+		proto := v1.Protocol("Unknown")
+		if endsIn(*port.NamedPort, "-udp") {
+			proto = v1.ProtocolUDP
+		} else if endsIn(*port.NamedPort, "-udp") {
+			proto = v1.ProtocolTCP
+		} else if endsIn(*port.NamedPort, "-udp") {
+			proto = v1.ProtocolSCTP
+		}
+
+		m := &PortProtocolMatcher{
+			Port:     &intstr.IntOrString{Type: intstr.String, StrVal: *port.NamedPort},
+			Protocol: proto,
+		}
+
+		return m, nil
+	}
+
+	// port.PortRange is non-nil
+	// default is TCP if protocol field is empty
+	proto := v1.ProtocolTCP
+	if port.PortRange.Protocol != "" {
+		proto = port.PortRange.Protocol
+	}
+
+	if port.PortRange.Start >= port.PortRange.End {
+		panic(errors.Errorf("invalid port range: start >= end"))
+	}
+
+	return nil, &PortRangeMatcher{
+		From:     int(port.PortRange.Start),
+		To:       int(port.PortRange.End),
+		Protocol: proto,
+	}
+}
+
+func nonNilCount(items ...interface{}) int {
+	nonNilCount := 0
+	for _, item := range items {
+		if item != nil {
+			nonNilCount++
+		}
+	}
+	return nonNilCount
+}
+
+func endsIn(s string, suffix string) bool {
+	return len(s) > len(suffix) && s[len(s)-len(suffix):] == suffix
 }

@@ -22,7 +22,7 @@ func (ppm *PodPeerMatcher) PrimaryKey() string {
 func (ppm *PodPeerMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
 	isAllowed := peer.IsExternal() && ppm.Namespace.Allows(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
 		ppm.Pod.Allows(peer.Internal.PodLabels) &&
-		ppm.Port.Allows(portInt, portName, protocol)
+		ppm.Port.Matches(portInt, portName, protocol)
 
 	return NewV1Effect(isAllowed)
 }

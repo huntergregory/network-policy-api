@@ -3,7 +3,9 @@ package matcher
 import (
 	"encoding/json"
 
+	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
 var (
@@ -46,6 +48,46 @@ const (
 	Pass Verdict = "Pass"
 )
 
+func AdminActionToVerdict(action v1alpha1.AdminNetworkPolicyRuleAction) Verdict {
+	switch action {
+	case v1alpha1.AdminNetworkPolicyRuleActionAllow:
+		return Allow
+	case v1alpha1.AdminNetworkPolicyRuleActionDeny:
+		return Deny
+	case v1alpha1.AdminNetworkPolicyRuleActionPass:
+		return Pass
+	default:
+		panic(errors.Errorf("unsupported ANP action %s", action))
+	}
+}
+
+func BasaelineAdminActionToVerdict(action v1alpha1.BaselineAdminNetworkPolicyRuleAction) Verdict {
+	switch action {
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
+		return Allow
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
+		return Deny
+	default:
+		panic(errors.Errorf("unsupported ANP action %s", action))
+	}
+}
+
+/*
+PeerMatcher matches a peer against an ANP, BANP, or v1 NetPol rule.
+
+These are the original PeerMatcher implementations made for v1 NetPol:
+- AllPeersMatcher
+- PortsForAllPeersMatcher
+- IPPeerMatcher
+- PodPeerMatcher
+
+All of these (except AllPeersMatcher) use a PortMatcher.
+If the traffic doesn't match the port matcher, then the matcher will Evaluate to a Verdict of None (or Deny for v1 NetPol).
+
+For v2 NetPol, all the above PeerMatchers are irrelevant except for PodPeerMatcher.
+
+TODO
+*/
 type PeerMatcher interface {
 	Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect
 }
@@ -67,7 +109,7 @@ type PortsForAllPeersMatcher struct {
 }
 
 func (a *PortsForAllPeersMatcher) Evaluate(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) Effect {
-	return NewV1Effect(a.Port.Allows(portInt, portName, protocol))
+	return NewV1Effect(a.Port.Matches(portInt, portName, protocol))
 }
 
 func (a *PortsForAllPeersMatcher) MarshalJSON() (b []byte, e error) {
