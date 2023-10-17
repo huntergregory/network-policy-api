@@ -157,7 +157,7 @@ func NewSubjectAdmin(subject *v1alpha1.AdminNetworkPolicySubject) *SubjectAdmin 
 }
 
 func (s *SubjectAdmin) Matches(candidate *InternalPeer) bool {
-	if (s.subject.Namespaces == nil && s.subject.Pods == nil) || (s.subject.Namespaces != nil && s.subject.Pods != nil) {
+	if trueCount(s.subject.Namespaces != nil, s.subject.Pods != nil) != 1 {
 		// unexpected since there should be exactly one of Namespaces or Pods
 		return false
 	}
@@ -171,7 +171,7 @@ func (s *SubjectAdmin) Matches(candidate *InternalPeer) bool {
 
 func (s *SubjectAdmin) TargetString() string {
 	// FIXME
-	return "TODO: implement target string for admin network policies"
+	return "FIXME: implement target string for admin network policies"
 }
 
 func (s *SubjectAdmin) GetPrimaryKey() string {

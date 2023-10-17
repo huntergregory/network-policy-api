@@ -35,7 +35,7 @@ func (i *IPPeerMatcher) MarshalJSON() (b []byte, e error) {
 	})
 }
 
-func (i *IPPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+func (i *IPPeerMatcher) Matches(_, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
 	isIpMatch, err := kube.IsIPAddressMatchForIPBlock(peer.IP, i.IPBlock)
 	// TODO propagate this error instead of panic
 	if err != nil {

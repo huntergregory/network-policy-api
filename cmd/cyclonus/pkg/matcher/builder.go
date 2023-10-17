@@ -13,7 +13,7 @@ func BuildNetworkPolicies(simplify bool, netpols []*networkingv1.NetworkPolicy) 
 	return BuildV1AndV2NetPols(simplify, netpols, nil, nil)
 }
 
-func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, ANPs []*v1alpha1.AdminNetworkPolicy, banp *v1alpha1.BaselineAdminNetworkPolicy) *Policy {
+func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, anps []*v1alpha1.AdminNetworkPolicy, banp *v1alpha1.BaselineAdminNetworkPolicy) *Policy {
 	np := NewPolicy()
 	for _, p := range netpols {
 		ingress, egress := BuildTarget(p)
@@ -21,7 +21,13 @@ func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, A
 		np.AddTarget(false, egress)
 	}
 
-	for _, p := range ANPs {
+	priorities := make(map[int32]struct{})
+	for _, p := range anps {
+		if _, ok := priorities[p.Spec.Priority]; ok {
+			panic(errors.Errorf("duplicate priorities are undefined. priority: %d", p.Spec.Priority))
+		}
+		priorities[p.Spec.Priority] = struct{}{}
+
 		ingress, egress := BuildTargetANP(p)
 		np.AddTarget(true, ingress)
 		np.AddTarget(false, egress)
@@ -37,6 +43,7 @@ func BuildV1AndV2NetPols(simplify bool, netpols []*networkingv1.NetworkPolicy, A
 	if simplify {
 		np.Simplify()
 	}
+
 	return np
 }
 
@@ -301,7 +308,7 @@ func BuildPeerMatcherAdmin(peers []v1alpha1.AdminNetworkPolicyPeer, ports *[]v1a
 	// 2. build Peers
 	var peerMatchers []PeerMatcher
 	for _, peer := range peers {
-		if nonNilCount(peer.Namespaces == nil, peer.Pods == nil) != 1 {
+		if trueCount(peer.Namespaces != nil, peer.Pods != nil) != 1 {
 			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
 		}
 
@@ -322,20 +329,28 @@ func BuildPeerMatcherAdmin(peers []v1alpha1.AdminNetworkPolicyPeer, ports *[]v1a
 			ns = *peer.Namespaces
 		}
 
-		if nonNilCount(ns.NamespaceSelector, ns.SameLabels, ns.NotSameLabels) != 1 {
+		if trueCount(ns.NamespaceSelector != nil, ns.SameLabels != nil, ns.NotSameLabels != nil) != 1 {
 			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
 		}
 
 		var nsMatcher NamespaceMatcher
 		if ns.NamespaceSelector != nil {
-			nsMatcher = &LabelSelectorNamespaceMatcher{
-				Selector: *ns.NamespaceSelector,
+			if kube.IsLabelSelectorEmpty(*ns.NamespaceSelector) {
+				nsMatcher = &AllNamespaceMatcher{}
+			} else {
+				nsMatcher = &LabelSelectorNamespaceMatcher{
+					Selector: *ns.NamespaceSelector,
+				}
 			}
 		} else if ns.SameLabels != nil {
-			// TODO ns matcher based on ns.SameLabels
+			nsMatcher = &SameLabelsNamespaceMatcher{
+				labels: ns.SameLabels,
+			}
 		} else {
 			// ns.NotSameLabels is non-nil
-			// TODO ns matcher based on ns.NotSameLabels
+			nsMatcher = &NotSameLabelsNamespaceMatcher{
+				labels: ns.NotSameLabels,
+			}
 		}
 
 		m := &PodPeerMatcher{
@@ -367,7 +382,7 @@ func BuildPortMatcherAdmin(ports []v1alpha1.AdminNetworkPolicyPort) PortMatcher 
 }
 
 func BuildSinglePortMatcherAdmin(port v1alpha1.AdminNetworkPolicyPort) (*PortProtocolMatcher, *PortRangeMatcher) {
-	if nonNilCount(port.PortNumber, port.NamedPort, port.PortRange) != 1 {
+	if trueCount(port.PortNumber != nil, port.NamedPort != nil, port.PortRange != nil) != 1 {
 		panic(errors.Errorf("invalid port: must have exactly one of PortNumber, NamedPort, or PortRange"))
 	}
 
@@ -423,14 +438,14 @@ func BuildSinglePortMatcherAdmin(port v1alpha1.AdminNetworkPolicyPort) (*PortPro
 	}
 }
 
-func nonNilCount(items ...interface{}) int {
-	nonNilCount := 0
+func trueCount(items ...bool) int {
+	count := 0
 	for _, item := range items {
-		if item != nil {
-			nonNilCount++
+		if item {
+			count++
 		}
 	}
-	return nonNilCount
+	return count
 }
 
 func endsIn(s string, suffix string) bool {

@@ -167,7 +167,9 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 	// 1. ANP rules
 	var anpEffect *Effect
+	fmt.Printf("DEBUGME: resolving ANP rules: %+v\n", d)
 	for _, e := range d {
+		fmt.Println("DEBUGME: considering effect", e)
 		if e.PolicyKind != AdminNetworkPolicy {
 			continue
 		}
@@ -181,7 +183,9 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 		}
 
 		if e.Verdict != None && e.Priority < anpEffect.Priority {
-			anpEffect = &e
+			fmt.Println("DEBUGME: setting anpEffect to", e)
+			eCopy := e
+			anpEffect = &eCopy
 		}
 	}
 
@@ -198,13 +202,14 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 		haveV1NetPols = true
 		if e.Verdict == Allow {
-			return anpEffect, &e, nil
+			eCopy := e
+			return anpEffect, &eCopy, nil
 		}
 	}
 
 	if haveV1NetPols {
-		e := NewV1Effect(false)
-		return anpEffect, &e, nil
+		v1NoMatch := NewV1Effect(false)
+		return anpEffect, &v1NoMatch, nil
 	}
 
 	// 3. BANP rules
@@ -215,12 +220,15 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 		}
 
 		if banpEffect == nil {
-			banpEffect = &e
-			continue
+			banpEffect = &Effect{
+				PolicyKind: BaselineAdminNetworkPolicy,
+				Verdict:    None,
+			}
 		}
 
 		if e.Verdict != None {
-			return anpEffect, nil, &e
+			eCopy := e
+			return anpEffect, nil, &eCopy
 		}
 	}
 
@@ -269,28 +277,30 @@ func (p *Policy) IsTrafficAllowed(traffic *Traffic) *AllowedResult {
 }
 
 func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) DirectionResult {
-	var target *TrafficPeer
+	var subject *TrafficPeer
 	var peer *TrafficPeer
 	if isIngress {
-		target = traffic.Destination
+		subject = traffic.Destination
 		peer = traffic.Source
 	} else {
-		target = traffic.Source
+		subject = traffic.Source
 		peer = traffic.Destination
 	}
 
 	// 1. if target is external to cluster -> allow
 	//   this is because we can't stop external hosts from sending or receiving traffic
-	if target.Internal == nil {
+	if subject.Internal == nil {
 		return nil
 	}
 
-	matchingTargets := p.TargetsApplyingToPod(isIngress, target.Internal)
+	matchingTargets := p.TargetsApplyingToPod(isIngress, subject.Internal)
 
 	// 2. No targets match => automatic allow
 	if len(matchingTargets) == 0 {
 		return nil
 	}
+
+	fmt.Printf("DEBUGME: matched targets. srcI: %+v. dstI: %+v\n", traffic.Source.Internal, traffic.Destination.Internal)
 
 	// 3. Check if any matching targets allow this traffic
 	effects := make([]Effect, 0)
@@ -298,15 +308,16 @@ func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) Dire
 		for _, m := range target.Peers {
 			// check if m is a PeerMatcherV2
 			e := NewV1Effect(true)
-			matcherV2, ok := m.(PeerMatcherV2)
+			matcherV2, ok := m.(*PeerMatcherV2)
 			if ok {
 				e = matcherV2.effectFromMatch
 			}
 
-			if !m.Matches(peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol) {
+			if !m.Matches(subject, peer, traffic.ResolvedPort, traffic.ResolvedPortName, traffic.Protocol) {
 				e.Verdict = None
 			}
 
+			fmt.Println("DEBUGMe: added effect", e)
 			effects = append(effects, e)
 		}
 	}

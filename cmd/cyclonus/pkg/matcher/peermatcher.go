@@ -19,19 +19,20 @@ These are the original PeerMatcher implementations made for v1 NetPol:
 - IPPeerMatcher
 - PodPeerMatcher
 
-Now we also have PeerMatcherV2, a wrapper for the above to model ANP and BANP.
+Now we also have PeerMatcherV2, a wrapper for the above to model ANP and BANP,
+as well as NamespaceMatcher objects for SameLabels and NotSameLabels.
 
 All of these (except AllPeersMatcher) use a PortMatcher.
 If the traffic doesn't match the port matcher, then Matches() will be false.
 */
 type PeerMatcher interface {
-	Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool
+	Matches(subject, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool
 }
 
 // AllPeerMatcher matches all pod to pod traffic.
 type AllPeersMatcher struct{}
 
-func (a *AllPeersMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+func (a *AllPeersMatcher) Matches(_, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
 	return true
 }
 
@@ -46,7 +47,7 @@ type PortsForAllPeersMatcher struct {
 	Port PortMatcher
 }
 
-func (p *PortsForAllPeersMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+func (p *PortsForAllPeersMatcher) Matches(_, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
 	return p.Port.Matches(portInt, portName, protocol)
 }
 

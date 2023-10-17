@@ -13,7 +13,7 @@ func Simplify(matchers []PeerMatcher) []PeerMatcher {
 
 	result := make([]PeerMatcher, 0)
 	for _, m := range matchers {
-		if matcherV2, ok := m.(PeerMatcherV2); ok {
+		if matcherV2, ok := m.(*PeerMatcherV2); ok {
 			result = append(result, matcherV2)
 		}
 	}
@@ -26,7 +26,7 @@ func Simplify(matchers []PeerMatcher) []PeerMatcher {
 func SimplifyV1(matchers []PeerMatcher) []PeerMatcher {
 	v1Matchers := make([]PeerMatcher, 0)
 	for _, m := range matchers {
-		if _, ok := m.(PeerMatcherV2); !ok {
+		if _, ok := m.(*PeerMatcherV2); !ok {
 			v1Matchers = append(v1Matchers, m)
 		}
 	}

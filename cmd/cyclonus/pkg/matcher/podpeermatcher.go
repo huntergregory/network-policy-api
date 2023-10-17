@@ -3,6 +3,7 @@ package matcher
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	v1 "k8s.io/api/core/v1"
@@ -21,8 +22,9 @@ func (ppm *PodPeerMatcher) PrimaryKey() string {
 	return ppm.Namespace.PrimaryKey() + "---" + ppm.Pod.PrimaryKey()
 }
 
-func (ppm *PodPeerMatcher) Matches(peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
-	return !peer.IsExternal() && ppm.Namespace.Matches(peer.Internal.Namespace, peer.Internal.NamespaceLabels) &&
+func (ppm *PodPeerMatcher) Matches(subject, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+	return !peer.IsExternal() &&
+		ppm.Namespace.Matches(peer.Internal.Namespace, peer.Internal.NamespaceLabels, subject.Internal.NamespaceLabels) &&
 		ppm.Pod.Matches(peer.Internal.PodLabels) &&
 		ppm.Port.Matches(portInt, portName, protocol)
 }
@@ -107,8 +109,9 @@ func (p *LabelSelectorPodMatcher) PrimaryKey() string {
 
 // namespaces
 
+// NamespaceMatcher detects if the peer namespace is a match
 type NamespaceMatcher interface {
-	Matches(namespace string, namespaceLabels map[string]string) bool
+	Matches(namespace string, namespaceLabels, subjectNamespaceLabels map[string]string) bool
 	PrimaryKey() string
 }
 
@@ -116,7 +119,7 @@ type ExactNamespaceMatcher struct {
 	Namespace string
 }
 
-func (p *ExactNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
+func (p *ExactNamespaceMatcher) Matches(namespace string, _, _ map[string]string) bool {
 	return p.Namespace == namespace
 }
 
@@ -135,7 +138,7 @@ type LabelSelectorNamespaceMatcher struct {
 	Selector metav1.LabelSelector
 }
 
-func (p *LabelSelectorNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
+func (p *LabelSelectorNamespaceMatcher) Matches(_ string, namespaceLabels, _ map[string]string) bool {
 	return kube.IsLabelsMatchLabelSelector(namespaceLabels, p.Selector)
 }
 
@@ -152,7 +155,7 @@ func (p *LabelSelectorNamespaceMatcher) PrimaryKey() string {
 
 type AllNamespaceMatcher struct{}
 
-func (a *AllNamespaceMatcher) Matches(namespace string, namespaceLabels map[string]string) bool {
+func (a *AllNamespaceMatcher) Matches(_ string, _, _ map[string]string) bool {
 	return true
 }
 
@@ -164,4 +167,80 @@ func (a *AllNamespaceMatcher) MarshalJSON() (b []byte, e error) {
 
 func (a *AllNamespaceMatcher) PrimaryKey() string {
 	return `{"type": "all-namespaces"}`
+}
+
+type SameLabelsNamespaceMatcher struct {
+	labels []string
+}
+
+func (s *SameLabelsNamespaceMatcher) Matches(_ string, namespaceLabels, subjectNamespaceLabels map[string]string) bool {
+	if len(s.labels) == 0 {
+		return false
+	}
+
+	for _, k := range s.labels {
+		v, ok := namespaceLabels[k]
+		if !ok {
+			return false
+		}
+
+		v2, ok := subjectNamespaceLabels[k]
+		if !ok || v != v2 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *SameLabelsNamespaceMatcher) MarshalJSON() (b []byte, e error) {
+	return json.Marshal(map[string]interface{}{
+		"Type":   "same labels",
+		"Labels": s.labels,
+	})
+}
+
+func (s *SameLabelsNamespaceMatcher) PrimaryKey() string {
+	return fmt.Sprintf(`{"type": "same-labels", "labels": "%s"}`, strings.Join(s.labels, ","))
+}
+
+type NotSameLabelsNamespaceMatcher struct {
+	labels []string
+}
+
+func (s *NotSameLabelsNamespaceMatcher) Matches(_ string, namespaceLabels, subjectNamespaceLabels map[string]string) bool {
+	if len(s.labels) == 0 {
+		return false
+	}
+
+	different := false
+
+	for _, k := range s.labels {
+		v, ok := namespaceLabels[k]
+		if !ok {
+			return false
+		}
+
+		v2, ok := subjectNamespaceLabels[k]
+		if !ok {
+			return false
+		}
+
+		if v != v2 {
+			different = true
+		}
+	}
+
+	return different
+}
+
+func (s *NotSameLabelsNamespaceMatcher) MarshalJSON() (b []byte, e error) {
+	return json.Marshal(map[string]interface{}{
+		"Type":   "not same labels",
+		"Labels": s.labels,
+	})
+}
+
+func (s *NotSameLabelsNamespaceMatcher) PrimaryKey() string {
+	return fmt.Sprintf(`{"type": "not-same-labels", "labels": "%s"}`, strings.Join(s.labels, ","))
 }
