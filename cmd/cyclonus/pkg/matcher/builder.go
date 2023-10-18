@@ -308,7 +308,7 @@ func BuildPeerMatcherAdmin(peers []v1alpha1.AdminNetworkPolicyPeer, ports *[]v1a
 	// 2. build Peers
 	var peerMatchers []PeerMatcher
 	for _, peer := range peers {
-		if trueCount(peer.Namespaces != nil, peer.Pods != nil) != 1 {
+		if (peer.Namespaces == nil && peer.Pods == nil) || (peer.Namespaces != nil && peer.Pods != nil) {
 			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
 		}
 
@@ -329,7 +329,17 @@ func BuildPeerMatcherAdmin(peers []v1alpha1.AdminNetworkPolicyPeer, ports *[]v1a
 			ns = *peer.Namespaces
 		}
 
-		if trueCount(ns.NamespaceSelector != nil, ns.SameLabels != nil, ns.NotSameLabels != nil) != 1 {
+		nonNilCount := 0
+		if ns.NamespaceSelector != nil {
+			nonNilCount++
+		}
+		if ns.SameLabels != nil {
+			nonNilCount++
+		}
+		if ns.NotSameLabels != nil {
+			nonNilCount++
+		}
+		if nonNilCount != 1 {
 			panic(errors.Errorf("invalid admin peer: must have exactly one of Namespaces or Pods"))
 		}
 
@@ -382,7 +392,17 @@ func BuildPortMatcherAdmin(ports []v1alpha1.AdminNetworkPolicyPort) PortMatcher 
 }
 
 func BuildSinglePortMatcherAdmin(port v1alpha1.AdminNetworkPolicyPort) (*PortProtocolMatcher, *PortRangeMatcher) {
-	if trueCount(port.PortNumber != nil, port.NamedPort != nil, port.PortRange != nil) != 1 {
+	nonNilCount := 0
+	if port.PortNumber != nil {
+		nonNilCount++
+	}
+	if port.NamedPort != nil {
+		nonNilCount++
+	}
+	if port.PortRange != nil {
+		nonNilCount++
+	}
+	if nonNilCount != 1 {
 		panic(errors.Errorf("invalid port: must have exactly one of PortNumber, NamedPort, or PortRange"))
 	}
 
@@ -436,16 +456,6 @@ func BuildSinglePortMatcherAdmin(port v1alpha1.AdminNetworkPolicyPort) (*PortPro
 		To:       int(port.PortRange.End),
 		Protocol: proto,
 	}
-}
-
-func trueCount(items ...bool) int {
-	count := 0
-	for _, item := range items {
-		if item {
-			count++
-		}
-	}
-	return count
 }
 
 func endsIn(s string, suffix string) bool {

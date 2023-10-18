@@ -25,8 +25,8 @@ type connectivityTest struct {
 	name string
 	args args
 	// exactly one of expectedDrops or expectedAllows should be set
-	// if expectedDrops is non-nil, the default will be allow
-	// if expectedAllows is non-nil, the default will be deny
+	// if expectedDrops is non-nil, the default connectivity will be allow
+	// if expectedAllows is non-nil, the default connectivity will be deny
 	expectedDrops  *directedFlows
 	expectedAllows *directedFlows
 }
@@ -53,9 +53,25 @@ type flow struct {
 func TestNetPolV1Connectivity(t *testing.T) {
 	tests := []connectivityTest{
 		{
-			name: "pod selector",
+			name: "ingress port allowed",
+			expectedDrops: &directedFlows{
+				ingress: []flow{
+					{"x/a", "x/a", 80, v1.ProtocolTCP},
+					{"x/a", "x/a", 81, v1.ProtocolTCP},
+					{"x/a", "x/a", 81, v1.ProtocolUDP},
+					{"x/b", "x/a", 80, v1.ProtocolTCP},
+					{"x/b", "x/a", 81, v1.ProtocolTCP},
+					{"x/b", "x/a", 81, v1.ProtocolUDP},
+					{"y/a", "x/a", 80, v1.ProtocolTCP},
+					{"y/a", "x/a", 81, v1.ProtocolTCP},
+					{"y/a", "x/a", 81, v1.ProtocolUDP},
+					{"y/b", "x/a", 80, v1.ProtocolTCP},
+					{"y/b", "x/a", 81, v1.ProtocolTCP},
+					{"y/b", "x/a", 81, v1.ProtocolUDP},
+				},
+			},
 			args: args{
-				resources: getResources(t, []string{"x", "y", "z"}, []string{"a", "b", "c"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP, v1.ProtocolUDP}),
+				resources: getResources(t, []string{"x", "y"}, []string{"a", "b"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP, v1.ProtocolUDP}),
 				netpols: []*networkingv1.NetworkPolicy{
 					{
 						ObjectMeta: metav1.ObjectMeta{
@@ -70,12 +86,13 @@ func TestNetPolV1Connectivity(t *testing.T) {
 								{
 									Ports: []networkingv1.NetworkPolicyPort{
 										{
-											Protocol: &tcp,
-											Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 53},
+											Protocol: &udp,
+											Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 80},
 										},
 									},
 								},
 							},
+							PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 						},
 					},
 				},
@@ -83,18 +100,121 @@ func TestNetPolV1Connectivity(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			// TODO
-		})
-	}
+	runConnectivityTests(t, tests...)
 }
 
-func TestBANPConnectivity(t *testing.T) {
+func TestANPConnectivity(t *testing.T) {
 	tests := []connectivityTest{
 		{
-			name: "ingress anp same labels port range",
+			name: "egress port number protocol unspecified",
+			expectedDrops: &directedFlows{
+				egress: []flow{
+					{"x/a", "x/b", 80, v1.ProtocolTCP},
+				},
+			},
+			args: args{
+				resources: getResources(t, []string{"x"}, []string{"a", "b"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP}),
+				anps: []*v1alpha1.AdminNetworkPolicy{
+					{
+						Spec: v1alpha1.AdminNetworkPolicySpec{
+							Priority: 100,
+							Subject: v1alpha1.AdminNetworkPolicySubject{
+								Pods: &v1alpha1.NamespacedPodSubject{
+									NamespaceSelector: metav1.LabelSelector{
+										MatchLabels: map[string]string{"ns": "x"},
+									},
+									PodSelector: metav1.LabelSelector{
+										MatchLabels: map[string]string{"pod": "a"},
+									},
+								},
+							},
+							Egress: []v1alpha1.AdminNetworkPolicyEgressRule{
+								{
+									Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+									To: []v1alpha1.AdminNetworkPolicyPeer{
+										{
+											Pods: &v1alpha1.NamespacedPodPeer{
+												Namespaces: v1alpha1.NamespacedPeer{
+													NamespaceSelector: &metav1.LabelSelector{
+														MatchLabels: map[string]string{"ns": "x"},
+													},
+												},
+												PodSelector: metav1.LabelSelector{
+													MatchLabels: map[string]string{"pod": "b"},
+												},
+											},
+										},
+									},
+									Ports: &([]v1alpha1.AdminNetworkPolicyPort{
+										{
+											PortNumber: &v1alpha1.Port{
+												Port: 80,
+											},
+										},
+									}),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ingress port number protocol unspecified",
+			expectedDrops: &directedFlows{
+				ingress: []flow{
+					{"x/b", "x/a", 80, v1.ProtocolTCP},
+				},
+			},
+			args: args{
+				resources: getResources(t, []string{"x", "y"}, []string{"a", "b"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP, v1.ProtocolUDP}),
+				anps: []*v1alpha1.AdminNetworkPolicy{
+					{
+						Spec: v1alpha1.AdminNetworkPolicySpec{
+							Priority: 100,
+							Subject: v1alpha1.AdminNetworkPolicySubject{
+								Pods: &v1alpha1.NamespacedPodSubject{
+									NamespaceSelector: metav1.LabelSelector{
+										MatchLabels: map[string]string{"ns": "x"},
+									},
+									PodSelector: metav1.LabelSelector{
+										MatchLabels: map[string]string{"pod": "a"},
+									},
+								},
+							},
+							Ingress: []v1alpha1.AdminNetworkPolicyIngressRule{
+								{
+									Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+									From: []v1alpha1.AdminNetworkPolicyPeer{
+										{
+											Pods: &v1alpha1.NamespacedPodPeer{
+												Namespaces: v1alpha1.NamespacedPeer{
+													NamespaceSelector: &metav1.LabelSelector{
+														MatchLabels: map[string]string{"ns": "x"},
+													},
+												},
+												PodSelector: metav1.LabelSelector{
+													MatchLabels: map[string]string{"pod": "b"},
+												},
+											},
+										},
+									},
+									Ports: &([]v1alpha1.AdminNetworkPolicyPort{
+										{
+											PortNumber: &v1alpha1.Port{
+												Port: 80,
+											},
+										},
+									}),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ingress same labels port range",
 			expectedDrops: &directedFlows{
 				ingress: []flow{
 					{"x/a", "x/a", 80, v1.ProtocolTCP},
@@ -109,10 +229,6 @@ func TestBANPConnectivity(t *testing.T) {
 				resources: getResources(t, []string{"x", "y", "z"}, []string{"a", "b", "c"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP, v1.ProtocolUDP}),
 				anps: []*v1alpha1.AdminNetworkPolicy{
 					{
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: "x",
-							Name:      "base",
-						},
 						Spec: v1alpha1.AdminNetworkPolicySpec{
 							Priority: 100,
 							Subject: v1alpha1.AdminNetworkPolicySubject{
@@ -154,72 +270,16 @@ func TestBANPConnectivity(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "ingress anp same labels port range",
-			expectedDrops: &directedFlows{
-				ingress: []flow{
-					{"x/a", "x/a", 80, v1.ProtocolTCP},
-					{"x/a", "x/a", 81, v1.ProtocolTCP},
-					{"x/a", "x/b", 80, v1.ProtocolTCP},
-					{"x/a", "x/b", 81, v1.ProtocolTCP},
-					{"x/a", "x/c", 80, v1.ProtocolTCP},
-					{"x/a", "x/c", 81, v1.ProtocolTCP},
-				},
-			},
-			args: args{
-				resources: getResources(t, []string{"x", "y", "z"}, []string{"a", "b", "c"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP, v1.ProtocolUDP}),
-				anps: []*v1alpha1.AdminNetworkPolicy{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: "x",
-							Name:      "base",
-						},
-						Spec: v1alpha1.AdminNetworkPolicySpec{
-							Priority: 100,
-							Subject: v1alpha1.AdminNetworkPolicySubject{
-								Pods: &v1alpha1.NamespacedPodSubject{
-									NamespaceSelector: metav1.LabelSelector{
-										MatchLabels: map[string]string{"ns": "x"},
-									},
-									PodSelector: metav1.LabelSelector{
-										MatchLabels: map[string]string{"pod": "a"},
-									},
-								},
-							},
-							Egress: []v1alpha1.AdminNetworkPolicyEgressRule{
-								{
-									Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
-									Ports: &([]v1alpha1.AdminNetworkPolicyPort{
-										{
-											PortRange: &v1alpha1.PortRange{
-												Protocol: v1.ProtocolTCP,
-												Start:    80,
-												End:      81,
-											},
-										},
-									}),
-									To: []v1alpha1.AdminNetworkPolicyPeer{
-										{
-											Pods: &v1alpha1.NamespacedPodPeer{
-												Namespaces: v1alpha1.NamespacedPeer{
-													SameLabels: []string{"ns"},
-												},
-												PodSelector: metav1.LabelSelector{},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
+	runConnectivityTests(t, tests[0])
+}
+
+func runConnectivityTests(t *testing.T, tests ...connectivityTest) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			require.NotNil(t, tt.args.resources, "resources must be set")
 			require.True(t, (tt.expectedAllows == nil && tt.expectedDrops != nil) || (tt.expectedAllows != nil && tt.expectedDrops == nil), "exactly one of expectedAllows or expectedDrops")
 			var table *probe.Table
 			var df *directedFlows
@@ -254,8 +314,14 @@ func TestBANPConnectivity(t *testing.T) {
 
 			expected := table.RenderIngress()
 			actual := simTable.RenderIngress()
-			t.Logf("expected:\n%s\n", expected)
-			t.Logf("actual:\n%s\n", actual)
+			t.Logf("expected ingress:\n%s\n", expected)
+			t.Logf("actual ingress:\n%s\n", actual)
+			require.Equal(t, expected, actual)
+
+			expected = table.RenderEgress()
+			actual = simTable.RenderEgress()
+			t.Logf("expected egress:\n%s\n", expected)
+			t.Logf("actual egress:\n%s\n", actual)
 			require.Equal(t, expected, actual)
 		})
 	}

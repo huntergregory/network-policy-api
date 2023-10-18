@@ -157,7 +157,7 @@ func NewSubjectAdmin(subject *v1alpha1.AdminNetworkPolicySubject) *SubjectAdmin 
 }
 
 func (s *SubjectAdmin) Matches(candidate *InternalPeer) bool {
-	if trueCount(s.subject.Namespaces != nil, s.subject.Pods != nil) != 1 {
+	if (s.subject.Namespaces == nil && s.subject.Pods == nil) || (s.subject.Namespaces != nil && s.subject.Pods != nil) {
 		// unexpected since there should be exactly one of Namespaces or Pods
 		return false
 	}

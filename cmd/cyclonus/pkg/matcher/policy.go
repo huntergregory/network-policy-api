@@ -167,9 +167,7 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 	// 1. ANP rules
 	var anpEffect *Effect
-	fmt.Printf("DEBUGME: resolving ANP rules: %+v\n", d)
 	for _, e := range d {
-		fmt.Println("DEBUGME: considering effect", e)
 		if e.PolicyKind != AdminNetworkPolicy {
 			continue
 		}
@@ -183,7 +181,6 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 		}
 
 		if e.Verdict != None && e.Priority < anpEffect.Priority {
-			fmt.Println("DEBUGME: setting anpEffect to", e)
 			eCopy := e
 			anpEffect = &eCopy
 		}
@@ -300,8 +297,6 @@ func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) Dire
 		return nil
 	}
 
-	fmt.Printf("DEBUGME: matched targets. srcI: %+v. dstI: %+v\n", traffic.Source.Internal, traffic.Destination.Internal)
-
 	// 3. Check if any matching targets allow this traffic
 	effects := make([]Effect, 0)
 	for _, target := range matchingTargets {
@@ -317,7 +312,6 @@ func (p *Policy) IsIngressOrEgressAllowed(traffic *Traffic, isIngress bool) Dire
 				e.Verdict = None
 			}
 
-			fmt.Println("DEBUGMe: added effect", e)
 			effects = append(effects, e)
 		}
 	}
