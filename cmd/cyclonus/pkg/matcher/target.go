@@ -44,7 +44,6 @@ func netPolID(p interface{}) NetPolID {
 // b) one or more ANPs/BANPs sharing the same Namespace Selector and Pod Selector.
 type Target struct {
 	SubjectMatcher
-	primaryKey  string
 	SourceRules []NetPolID
 	// Peers contains all matchers for a Target.
 	// Order matters for ANP-based peers with equal priority (see Verdict for more info)
