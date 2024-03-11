@@ -30,7 +30,7 @@ const (
 	// QueryTrafficMode = "query-traffic"
 	// QueryTargetMode  = "query-target"
 	ProbeMode              = "probe"
-	VerdictWalkthroughMode = "verdict-walkthrough"
+	VerdictWalkthroughMode = "verdict"
 )
 
 var AllModes = []string{
@@ -164,7 +164,7 @@ func RunAnalyzeCommand(args *AnalyzeArgs) {
 		// 	fmt.Println("query traffic:")
 		// 	QueryTraffic(policies, args.TrafficPath)
 		case ProbeMode:
-			fmt.Println("probe:")
+			fmt.Println("simulated connectivity:")
 			ProbeSyntheticConnectivity(policies, args.ProbePath, kubePods, kubeNamespaces)
 		case VerdictWalkthroughMode:
 			fmt.Println("verdict walkthrough:")
@@ -336,7 +336,7 @@ func ProbeSyntheticConnectivity(explainedPolicies *matcher.Policy, modelPath str
 	simulatedProbe := simRunner.RunProbeForConfig(generator.ProbeAllAvailable, resources)
 	// fmt.Printf("Ingress:\n%s\n", simulatedProbe.RenderIngress())
 	// fmt.Printf("Egress:\n%s\n", simulatedProbe.RenderEgress())
-	fmt.Printf("%s\n\n\n", simulatedProbe.RenderTable())
+	fmt.Printf("%s\n", simulatedProbe.RenderTable())
 }
 
 func VerdictWalkthrough(policies *matcher.Policy) {

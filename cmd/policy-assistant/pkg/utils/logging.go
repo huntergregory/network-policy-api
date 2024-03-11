@@ -14,6 +14,6 @@ func SetUpLogger(logLevelStr string) error {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
-	logrus.Infof("log level set to '%s'", logrus.GetLevel())
+	// logrus.Infof("log level set to '%s'", logrus.GetLevel())
 	return nil
 }
