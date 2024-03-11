@@ -47,6 +47,8 @@ func SimplifyV1(matchers []PeerMatcher) []PeerMatcher {
 			ips = append(ips, a)
 		case *PodPeerMatcher:
 			pods = append(pods, a)
+		case *NoPodMatcher:
+			// FIXME make sure simplify logic is correct
 		default:
 			panic(errors.Errorf("invalid matcher type %T", matcher))
 		}

@@ -81,6 +81,10 @@ func BuildTarget(netpol *networkingv1.NetworkPolicy) (*Target, *Target) {
 }
 
 func BuildIngressMatcher(policyNamespace string, ingresses []networkingv1.NetworkPolicyIngressRule) []PeerMatcher {
+	if len(ingresses) == 0 {
+		return []PeerMatcher{&NoPodMatcher{}}
+	}
+
 	var matchers []PeerMatcher
 	for _, ingress := range ingresses {
 		matchers = append(matchers, BuildPeerMatcher(policyNamespace, ingress.Ports, ingress.From)...)
@@ -224,7 +228,7 @@ func BuildTargetANP(anp *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
 			v := AdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(r.From, r.Ports)
 			for _, m := range matchers {
-				matcherAdmin := NewPeerMatcherANP(m, v, int(anp.Spec.Priority), anp.Name)
+				matcherAdmin := NewPeerMatcherANP(m, v, int(anp.Spec.Priority), anp.Name, r.Name)
 				ingress.Peers = append(ingress.Peers, matcherAdmin)
 			}
 		}
@@ -240,7 +244,7 @@ func BuildTargetANP(anp *v1alpha1.AdminNetworkPolicy) (*Target, *Target) {
 			v := AdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(r.To, r.Ports)
 			for _, m := range matchers {
-				matcherAdmin := NewPeerMatcherANP(m, v, int(anp.Spec.Priority), anp.Name)
+				matcherAdmin := NewPeerMatcherANP(m, v, int(anp.Spec.Priority), anp.Name, r.Name)
 				egress.Peers = append(egress.Peers, matcherAdmin)
 			}
 		}
@@ -267,7 +271,7 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 			v := BaselineAdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(r.From, r.Ports)
 			for _, m := range matchers {
-				matcherAdmin := NewPeerMatcherBANP(m, v, banp.Name)
+				matcherAdmin := NewPeerMatcherBANP(m, v, banp.Name, r.Name)
 				ingress.Peers = append(ingress.Peers, matcherAdmin)
 			}
 		}
@@ -283,7 +287,7 @@ func BuildTargetBANP(banp *v1alpha1.BaselineAdminNetworkPolicy) (*Target, *Targe
 			v := BaselineAdminActionToVerdict(r.Action)
 			matchers := BuildPeerMatcherAdmin(r.To, r.Ports)
 			for _, m := range matchers {
-				matcherAdmin := NewPeerMatcherBANP(m, v, banp.Name)
+				matcherAdmin := NewPeerMatcherBANP(m, v, banp.Name, r.Name)
 				egress.Peers = append(egress.Peers, matcherAdmin)
 			}
 		}

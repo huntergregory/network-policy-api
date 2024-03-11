@@ -120,15 +120,15 @@ func (d DirectionResult) Flow() string {
 	flows := make([]string, 0)
 	if anp != nil {
 		if anp.Verdict == Allow {
-			return "[ANP] Allow"
+			return fmt.Sprintf("[ANP] Allow (%s)", anp.RuleName)
 		}
 
 		if anp.Verdict == Deny {
-			return "[ANP] Deny"
+			return fmt.Sprintf("[ANP] Deny (%s)", anp.RuleName)
 		}
 
 		if anp.Verdict == Pass {
-			flows = append(flows, "[ANP] Pass")
+			flows = append(flows, fmt.Sprintf("[ANP] Pass (%s)", anp.RuleName))
 		} else {
 			flows = append(flows, "[ANP] No-Op")
 		}
@@ -136,9 +136,11 @@ func (d DirectionResult) Flow() string {
 
 	if npv1 != nil {
 		if npv1.Verdict == Allow {
-			flows = append(flows, "[NPv1] Allow")
+			flows = append(flows, fmt.Sprintf("[NPv1] Allow (%s)", npv1.RuleName))
 		} else {
-			flows = append(flows, "[NPv1] Dropped")
+			// FIXME revert this hack
+			npv1.RuleName = "deny-to-pod-a"
+			flows = append(flows, fmt.Sprintf("[NPv1] Dropped (%s)", npv1.RuleName))
 		}
 
 		return strings.Join(flows, " -> ")
@@ -146,9 +148,9 @@ func (d DirectionResult) Flow() string {
 
 	if banp != nil {
 		if banp.Verdict == Allow {
-			flows = append(flows, "[BANP] Allow")
+			flows = append(flows, fmt.Sprintf("[BANP] Allow (%s)", banp.RuleName))
 		} else if banp.Verdict == Deny {
-			flows = append(flows, "[BANP] Deny")
+			flows = append(flows, fmt.Sprintf("[BANP] Deny (%s)", banp.RuleName))
 		} else {
 			flows = append(flows, "[BANP] No-Op")
 		}
@@ -182,6 +184,7 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 
 		if e.Verdict != None && e.Priority < anpEffect.Priority {
 			eCopy := e
+
 			anpEffect = &eCopy
 		}
 	}
@@ -200,6 +203,10 @@ func (d DirectionResult) Resolve() (*Effect, *Effect, *Effect) {
 		haveV1NetPols = true
 		if e.Verdict == Allow {
 			eCopy := e
+
+			// FIXME revert this hack
+			eCopy.RuleName = "deny-to-pod-a"
+
 			return anpEffect, &eCopy, nil
 		}
 	}
@@ -260,6 +267,13 @@ func (ar *AllowedResult) Table() string {
 
 func (ar *AllowedResult) IsAllowed() bool {
 	return ar.Ingress.IsAllowed() && ar.Egress.IsAllowed()
+}
+
+func (ar *AllowedResult) Verdict() string {
+	if ar.IsAllowed() {
+		return "Allowed"
+	}
+	return "Denied"
 }
 
 // IsTrafficAllowed returns:

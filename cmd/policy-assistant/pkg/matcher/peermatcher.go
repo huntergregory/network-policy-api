@@ -29,6 +29,12 @@ type PeerMatcher interface {
 	Matches(subject, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool
 }
 
+type NoPodMatcher struct{}
+
+func (p *NoPodMatcher) Matches(subject, peer *TrafficPeer, portInt int, portName string, protocol v1.Protocol) bool {
+	return false
+}
+
 // AllPeerMatcher matches all pod to pod traffic.
 type AllPeersMatcher struct{}
 

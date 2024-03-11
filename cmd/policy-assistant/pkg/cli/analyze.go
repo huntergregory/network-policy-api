@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/cyclonus/examples"
 	"github.com/mattfenwick/cyclonus/pkg/kube/netpol"
+	"github.com/olekukonko/tablewriter"
 	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	"strings"
 
 	"github.com/mattfenwick/collections/pkg/json"
 	"github.com/mattfenwick/cyclonus/pkg/connectivity/probe"
@@ -23,19 +25,21 @@ import (
 )
 
 const (
-	ParseMode        = "parse"
-	ExplainMode      = "explain"
-	QueryTrafficMode = "query-traffic"
-	QueryTargetMode  = "query-target"
-	ProbeMode        = "probe"
+	// ParseMode        = "parse"
+	ExplainMode = "explain"
+	// QueryTrafficMode = "query-traffic"
+	// QueryTargetMode  = "query-target"
+	ProbeMode              = "probe"
+	VerdictWalkthroughMode = "verdict-walkthrough"
 )
 
 var AllModes = []string{
-	ParseMode,
+	// ParseMode,
 	ExplainMode,
-	QueryTrafficMode,
-	QueryTargetMode,
+	// QueryTrafficMode,
+	// QueryTargetMode,
 	ProbeMode,
+	VerdictWalkthroughMode,
 }
 
 type AnalyzeArgs struct {
@@ -75,7 +79,7 @@ func SetupAnalyzeCommand() *cobra.Command {
 	command.Flags().StringSliceVarP(&args.Namespaces, "namespace", "n", []string{}, "namespaces to read kube resources from; similar to kubectl's '--namespace'/'-n' flag, except that multiple namespaces may be passed in and is empty if not set explicitly (instead of 'default' as in kubectl)")
 	command.Flags().StringVar(&args.PolicyPath, "policy-path", "", "may be a file or a directory; if set, will attempt to read policies from the path")
 	command.Flags().StringVar(&args.Context, "context", "", "selects kube context to read policies from; only reads from kube if one or more namespaces or all namespaces are specified")
-	command.Flags().BoolVar(&args.SimplifyPolicies, "simplify-policies", true, "if true, reduce policies to simpler form while preserving semantics")
+	command.Flags().BoolVar(&args.SimplifyPolicies, "simplify-policies", false, "if true, reduce policies to simpler form while preserving semantics")
 
 	command.Flags().StringSliceVar(&args.Modes, "mode", []string{ExplainMode}, "analysis modes to run; allowed values are "+strings.Join(AllModes, ","))
 
@@ -90,7 +94,7 @@ func RunAnalyzeCommand(args *AnalyzeArgs) {
 	// 1. read policies from kube
 	var kubePolicies []*networkingv1.NetworkPolicy
 	var kubeANPs []*v1alpha1.AdminNetworkPolicy
-	var kubeBANPs *v1alpha1.BaselineAdminNetworkPolicy
+	var kubeBANP *v1alpha1.BaselineAdminNetworkPolicy
 	var kubePods []v1.Pod
 	var kubeNamespaces []v1.Namespace
 	if args.AllNamespaces || len(args.Namespaces) > 0 {
@@ -113,47 +117,58 @@ func RunAnalyzeCommand(args *AnalyzeArgs) {
 			logrus.Errorf("unable to read pods from kube, ns '%s': %+v", namespaces, err)
 		}
 	}
+
 	// 2. read policies from file
 	if args.PolicyPath != "" {
-		policiesFromPath, err := kube.ReadNetworkPoliciesFromPath(args.PolicyPath)
+		policiesFromPath, err := kube.ReadNetworkPoliciesFromPath(args.PolicyPath + "/npv1")
 		utils.DoOrDie(err)
 		kubePolicies = append(kubePolicies, policiesFromPath...)
+
+		kubeANPs, err = kube.ReadANPs(args.PolicyPath + "/anp")
+		utils.DoOrDie(err)
+
+		kubeBANP, err = kube.ReadBANP(args.PolicyPath + "/banp")
+		utils.DoOrDie(err)
 	}
+
 	// 3. read example policies
 	if args.UseExamplePolicies {
 		kubePolicies = append(kubePolicies, netpol.AllExamples...)
 
 		kubeANPs = examples.CoreGressRulesCombinedANB
-		kubeBANPs = examples.CoreGressRulesCombinedBANB
+		kubeBANP = examples.CoreGressRulesCombinedBANB
 	}
 
 	logrus.Debugf("parsed policies:\n%s", json.MustMarshalToString(kubePolicies))
-	policies := matcher.BuildV1AndV2NetPols(args.SimplifyPolicies, kubePolicies, kubeANPs, kubeBANPs)
+	policies := matcher.BuildV1AndV2NetPols(args.SimplifyPolicies, kubePolicies, kubeANPs, kubeBANP)
 
 	for _, mode := range args.Modes {
 		switch mode {
-		case ParseMode:
-			fmt.Println("parsed policies:")
-			ParsePolicies(kubePolicies)
+		// case ParseMode:
+		// 	fmt.Println("parsed policies:")
+		// 	ParsePolicies(kubePolicies)
 		case ExplainMode:
 			fmt.Println("explained policies:")
 			ExplainPolicies(policies)
-		case QueryTargetMode:
-			pods := make([]*QueryTargetPod, len(kubePods))
-			for i, p := range kubePods {
-				pods[i] = &QueryTargetPod{
-					Namespace: p.Namespace,
-					Labels:    p.Labels,
-				}
-			}
-			fmt.Println("query target:")
-			QueryTargets(policies, args.TargetPodPath, pods)
-		case QueryTrafficMode:
-			fmt.Println("query traffic:")
-			QueryTraffic(policies, args.TrafficPath)
+		// case QueryTargetMode:
+		// 	pods := make([]*QueryTargetPod, len(kubePods))
+		// 	for i, p := range kubePods {
+		// 		pods[i] = &QueryTargetPod{
+		// 			Namespace: p.Namespace,
+		// 			Labels:    p.Labels,
+		// 		}
+		// 	}
+		// 	fmt.Println("query target:")
+		// 	QueryTargets(policies, args.TargetPodPath, pods)
+		// case QueryTrafficMode:
+		// 	fmt.Println("query traffic:")
+		// 	QueryTraffic(policies, args.TrafficPath)
 		case ProbeMode:
 			fmt.Println("probe:")
 			ProbeSyntheticConnectivity(policies, args.ProbePath, kubePods, kubeNamespaces)
+		case VerdictWalkthroughMode:
+			fmt.Println("verdict walkthrough:")
+			VerdictWalkthrough(policies)
 		default:
 			panic(errors.Errorf("unrecognized mode %s", mode))
 		}
@@ -243,63 +258,160 @@ func ProbeSyntheticConnectivity(explainedPolicies *matcher.Policy, modelPath str
 
 		jobBuilder := &probe.JobBuilder{TimeoutSeconds: 10}
 
+		// FIXME JSON-defined resources not working?
+		if len(config.Probes) == 0 {
+			gen := generator.ProbeAllAvailable
+			simRunner := probe.NewSimulatedRunner(explainedPolicies, jobBuilder)
+
+			probeResult := simRunner.RunProbeForConfig(gen, config.Resources)
+
+			logrus.Info("probing all available ports")
+			fmt.Printf("Ingress:\n%s\n", probeResult.RenderIngress())
+			fmt.Printf("Egress:\n%s\n", probeResult.RenderEgress())
+			fmt.Printf("Combined:\n%s\n\n\n", probeResult.RenderTable())
+
+			return
+		}
+
 		// run probes
 		for _, probeConfig := range config.Probes {
-			probeResult := probe.NewSimulatedRunner(explainedPolicies, jobBuilder).
-				RunProbeForConfig(generator.NewProbeConfig(probeConfig.Port, probeConfig.Protocol, generator.ProbeModeServiceName), config.Resources)
+			gen := generator.NewProbeConfig(probeConfig.Port, probeConfig.Protocol, generator.ProbeModeServiceName)
+			simRunner := probe.NewSimulatedRunner(explainedPolicies, jobBuilder)
+			probeResult := simRunner.RunProbeForConfig(gen, config.Resources)
 
 			logrus.Infof("probe on port %s, protocol %s", probeConfig.Port.String(), probeConfig.Protocol)
-
 			fmt.Printf("Ingress:\n%s\n", probeResult.RenderIngress())
-
 			fmt.Printf("Egress:\n%s\n", probeResult.RenderEgress())
-
 			fmt.Printf("Combined:\n%s\n\n\n", probeResult.RenderTable())
 		}
+
+		return
 	}
 
-	resources := &probe.Resources{
-		Namespaces: map[string]map[string]string{},
-		Pods:       []*probe.Pod{},
-	}
+	// resources := &probe.Resources{
+	// 	Namespaces: map[string]map[string]string{},
+	// 	Pods:       []*probe.Pod{},
+	// }
 
-	nsMap := map[string]v1.Namespace{}
-	for _, ns := range kubeNamespaces {
-		nsMap[ns.Name] = ns
-		resources.Namespaces[ns.Name] = ns.Labels
-	}
+	// nsMap := map[string]v1.Namespace{}
+	// for _, ns := range kubeNamespaces {
+	// 	nsMap[ns.Name] = ns
+	// 	resources.Namespaces[ns.Name] = ns.Labels
+	// }
 
-	for _, pod := range kubePods {
-		var containers []*probe.Container
-		for _, cont := range pod.Spec.Containers {
-			if len(cont.Ports) == 0 {
-				logrus.Warnf("skipping container %s/%s/%s, no ports available", pod.Namespace, pod.Name, cont.Name)
-				continue
-			}
-			port := cont.Ports[0]
-			containers = append(containers, &probe.Container{
-				Name:     cont.Name,
-				Port:     int(port.ContainerPort),
-				Protocol: port.Protocol,
-				PortName: port.Name,
-			})
-		}
-		if len(containers) == 0 {
-			logrus.Warnf("skipping pod %s/%s, no containers available", pod.Namespace, pod.Name)
-			continue
-		}
-		resources.Pods = append(resources.Pods, &probe.Pod{
-			Namespace:  pod.Namespace,
-			Name:       pod.Name,
-			Labels:     pod.Labels,
-			IP:         pod.Status.PodIP,
-			Containers: containers,
-		})
-	}
+	// for _, pod := range kubePods {
+	// 	var containers []*probe.Container
+	// 	for _, cont := range pod.Spec.Containers {
+	// 		if len(cont.Ports) == 0 {
+	// 			logrus.Warnf("skipping container %s/%s/%s, no ports available", pod.Namespace, pod.Name, cont.Name)
+	// 			continue
+	// 		}
+	// 		port := cont.Ports[0]
+	// 		containers = append(containers, &probe.Container{
+	// 			Name:     cont.Name,
+	// 			Port:     int(port.ContainerPort),
+	// 			Protocol: port.Protocol,
+	// 			PortName: port.Name,
+	// 		})
+	// 	}
+	// 	if len(containers) == 0 {
+	// 		logrus.Warnf("skipping pod %s/%s, no containers available", pod.Namespace, pod.Name)
+	// 		continue
+	// 	}
+	// 	resources.Pods = append(resources.Pods, &probe.Pod{
+	// 		Namespace:  pod.Namespace,
+	// 		Name:       pod.Name,
+	// 		Labels:     pod.Labels,
+	// 		IP:         pod.Status.PodIP,
+	// 		Containers: containers,
+	// 	})
+	// }
+
+	// FIXME: use actual cluster pods
+	kubernetes := kube.NewMockKubernetes(1.0)
+	resources, err := probe.NewDefaultResources(kubernetes, []string{"demo"}, []string{"a", "b"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP}, []string{}, 5, false, "registry.k8s.io")
+	utils.DoOrDie(err)
 
 	simRunner := probe.NewSimulatedRunner(explainedPolicies, &probe.JobBuilder{TimeoutSeconds: 10})
 	simulatedProbe := simRunner.RunProbeForConfig(generator.ProbeAllAvailable, resources)
-	fmt.Printf("Ingress:\n%s\n", simulatedProbe.RenderIngress())
-	fmt.Printf("Egress:\n%s\n", simulatedProbe.RenderEgress())
-	fmt.Printf("Combined:\n%s\n\n\n", simulatedProbe.RenderTable())
+	// fmt.Printf("Ingress:\n%s\n", simulatedProbe.RenderIngress())
+	// fmt.Printf("Egress:\n%s\n", simulatedProbe.RenderEgress())
+	fmt.Printf("%s\n\n\n", simulatedProbe.RenderTable())
+}
+
+func VerdictWalkthrough(policies *matcher.Policy) {
+	tableString := &strings.Builder{}
+	table := tablewriter.NewWriter(tableString)
+	table.SetAutoWrapText(false)
+	table.SetRowLine(true)
+	table.SetAutoMergeCells(true)
+
+	table.SetHeader([]string{"Traffic", "Verdict", "Ingress Walkthrough", "Egress Walkthrough"})
+
+	// FIXME: use pod resources from CLI arguments or JSON
+	podA := &matcher.TrafficPeer{
+		Internal: &matcher.InternalPeer{
+			PodLabels:       map[string]string{"pod": "a"},
+			NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": "demo"},
+			Namespace:       "demo",
+		},
+		IP: "10.0.0.4",
+	}
+	podB := &matcher.TrafficPeer{
+		Internal: &matcher.InternalPeer{
+			PodLabels:       map[string]string{"pod": "b"},
+			NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": "demo"},
+			Namespace:       "demo",
+		},
+		IP: "10.0.0.5",
+	}
+	allTraffic := []*matcher.Traffic{
+		{
+			Source:       podA,
+			Destination:  podB,
+			ResolvedPort: 80,
+			Protocol:     v1.ProtocolTCP,
+		},
+		{
+			Source:       podA,
+			Destination:  podB,
+			ResolvedPort: 81,
+			Protocol:     v1.ProtocolTCP,
+		},
+		{
+			Source:       podB,
+			Destination:  podA,
+			ResolvedPort: 80,
+			Protocol:     v1.ProtocolTCP,
+		},
+		{
+			Source:       podB,
+			Destination:  podA,
+			ResolvedPort: 81,
+			Protocol:     v1.ProtocolTCP,
+		},
+	}
+
+	trafficStrings := []string{
+		"demo/a -> demo/b:80 (TCP)",
+		"demo/a -> demo/b:81 (TCP)",
+		"demo/b -> demo/a:80 (TCP)",
+		"demo/b -> demo/a:81 (TCP)",
+	}
+
+	for i, traffic := range allTraffic {
+		trafficResult := policies.IsTrafficAllowed(traffic)
+		ingressFlow := trafficResult.Ingress.Flow()
+		egressFlow := trafficResult.Egress.Flow()
+		if ingressFlow == "" {
+			ingressFlow = "no policies targeting ingress"
+		}
+		if egressFlow == "" {
+			egressFlow = "no policies targeting egress"
+		}
+		table.Append([]string{trafficStrings[i], trafficResult.Verdict(), ingressFlow, egressFlow})
+	}
+
+	table.Render()
+	fmt.Println(tableString.String())
 }

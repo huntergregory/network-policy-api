@@ -15,6 +15,7 @@ import (
 	"github.com/mattfenwick/cyclonus/pkg/generator"
 	"github.com/mattfenwick/cyclonus/pkg/kube"
 	"github.com/mattfenwick/cyclonus/pkg/matcher"
+	"github.com/mattfenwick/cyclonus/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
@@ -57,6 +58,26 @@ type flow struct {
 
 func TestNetPolV1Connectivity(t *testing.T) {
 	tests := []connectivityTest{
+		{
+			name:                   "deny all",
+			defaultIngressBehavior: probe.ConnectivityBlocked,
+			defaultEgressBehavior:  probe.ConnectivityAllowed,
+			args: args{
+				resources: getResources(t, []string{"x"}, []string{"a", "b"}, []int{80}, []v1.Protocol{v1.ProtocolTCP}),
+				netpols: []*networkingv1.NetworkPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: "x",
+							Name:      "base",
+						},
+						Spec: networkingv1.NetworkPolicySpec{
+							PodSelector: metav1.LabelSelector{},
+							PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+						},
+					},
+				},
+			},
+		},
 		{
 			name:                   "ingress port allowed",
 			defaultIngressBehavior: probe.ConnectivityAllowed,
@@ -1351,6 +1372,20 @@ func runConnectivityTests(t *testing.T, tests ...connectivityTest) {
 				}
 			}
 
+			if tt.args.netpols == nil && tt.args.anps == nil && tt.args.banp == nil {
+				netPols, err := kube.ReadNetworkPoliciesFromPath("../../kubecon/npv1")
+				utils.DoOrDie(err)
+				tt.args.netpols = append(tt.args.netpols, netPols...)
+
+				anps, err := kube.ReadANPs("../../kubecon/anp")
+				utils.DoOrDie(err)
+				tt.args.anps = append(tt.args.anps, anps...)
+
+				banp, err := kube.ReadBANP("../../kubecon/banp")
+				utils.DoOrDie(err)
+				tt.args.banp = banp
+			}
+
 			parsedPolicy := matcher.BuildV1AndV2NetPols(false, tt.args.netpols, tt.args.anps, tt.args.banp)
 			jobBuilder := &probe.JobBuilder{TimeoutSeconds: 3}
 			simRunner := probe.NewSimulatedRunner(parsedPolicy, jobBuilder)
@@ -1384,4 +1419,19 @@ func getResources(t *testing.T, namespaces, podNames []string, ports []int, prot
 	resources, err := probe.NewDefaultResources(kubernetes, namespaces, podNames, ports, protocols, []string{}, 5, false, "registry.k8s.io")
 	require.Nil(t, err, "failed to create resources")
 	return resources
+}
+
+func TestKubeCon(t *testing.T) {
+	tests := []connectivityTest{
+		{
+			name:                   "KubeCon",
+			defaultIngressBehavior: probe.ConnectivityAllowed,
+			defaultEgressBehavior:  probe.ConnectivityAllowed,
+			args: args{
+				resources: getResources(t, []string{"demo"}, []string{"a", "b"}, []int{80, 81}, []v1.Protocol{v1.ProtocolTCP}),
+			},
+		},
+	}
+
+	runConnectivityTests(t, tests...)
 }
