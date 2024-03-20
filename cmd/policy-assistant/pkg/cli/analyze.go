@@ -30,7 +30,7 @@ const (
 	// QueryTrafficMode = "query-traffic"
 	// QueryTargetMode  = "query-target"
 	ProbeMode              = "probe"
-	VerdictWalkthroughMode = "verdict"
+	VerdictWalkthroughMode = "walkthrough"
 )
 
 var AllModes = []string{
