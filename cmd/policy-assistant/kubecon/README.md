@@ -1,5 +1,7 @@
 # KubeCon EU 2024 Demo
 
+Forked from [upstream](https://github.com/kubernetes-sigs/network-policy-api/) for demo purposes. Click [here](https://github.com/kubernetes-sigs/network-policy-api/issues/150) for the Policy Assistant parent issue.
+
 Feel free to clone this code and modify YAMLs to experiment with different policies.
 
 ```shell
