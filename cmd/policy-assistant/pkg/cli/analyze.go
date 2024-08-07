@@ -2,10 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mattfenwick/cyclonus/examples"
 	"github.com/mattfenwick/cyclonus/pkg/kube/netpol"
 	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	"strings"
 
 	"github.com/mattfenwick/collections/pkg/json"
 	"github.com/mattfenwick/cyclonus/pkg/connectivity/probe"
@@ -138,6 +139,7 @@ func RunAnalyzeCommand(args *AnalyzeArgs) {
 			fmt.Println("explained policies:")
 			ExplainPolicies(policies)
 		case ProbeMode:
+			fmt.Println("probe (simulated connectivity):")
 			ProbeSyntheticConnectivity(policies, args.ProbePath, kubePods, kubeNamespaces)
 		default:
 			panic(errors.Errorf("unrecognized mode %s", mode))
@@ -161,19 +163,33 @@ func ProbeSyntheticConnectivity(explainedPolicies *matcher.Policy, modelPath str
 
 		jobBuilder := &probe.JobBuilder{TimeoutSeconds: 10}
 
+		if len(config.Probes) == 0 {
+			gen := generator.ProbeAllAvailable
+			simRunner := probe.NewSimulatedRunner(explainedPolicies, jobBuilder)
+
+			probeResult := simRunner.RunProbeForConfig(gen, config.Resources)
+
+			logrus.Info("probing all available ports")
+			fmt.Printf("Ingress:\n%s\n", probeResult.RenderIngress())
+			fmt.Printf("Egress:\n%s\n", probeResult.RenderEgress())
+			fmt.Printf("Combined:\n%s\n\n\n", probeResult.RenderTable())
+
+			return
+		}
+
 		// run probes
 		for _, probeConfig := range config.Probes {
-			probeResult := probe.NewSimulatedRunner(explainedPolicies, jobBuilder).
-				RunProbeForConfig(generator.NewProbeConfig(probeConfig.Port, probeConfig.Protocol, generator.ProbeModeServiceName), config.Resources)
+			gen := generator.NewProbeConfig(probeConfig.Port, probeConfig.Protocol, generator.ProbeModeServiceName)
+			simRunner := probe.NewSimulatedRunner(explainedPolicies, jobBuilder)
+			probeResult := simRunner.RunProbeForConfig(gen, config.Resources)
 
 			logrus.Infof("probe on port %s, protocol %s", probeConfig.Port.String(), probeConfig.Protocol)
-
 			fmt.Printf("Ingress:\n%s\n", probeResult.RenderIngress())
-
 			fmt.Printf("Egress:\n%s\n", probeResult.RenderEgress())
-
 			fmt.Printf("Combined:\n%s\n\n\n", probeResult.RenderTable())
 		}
+
+		return
 	}
 
 	resources := &probe.Resources{
