@@ -2,11 +2,18 @@
 
 ## Overview
 
-The Network Policy API project is has the following two main release components:
-- Kubernetes Custom Resource Definitions (CRDs)
-- Corresponding Go bindings for the API (`sigs.k8s.io/network-policy-api` Go package)
+The Network Policy API project is home to two kinds of releases:
+- API release (e.g. `v0.1.1`) with the following components:
+  - Kubernetes Custom Resource Definitions (CRDs)
+  - Corresponding Go bindings for the API (`sigs.k8s.io/network-policy-api` Go package)
+- Policy Assistant release (releases with the `pola` suffix like `v0.0.1-pola`) with the following components:
+  - `pola` Command-Line Interface (CLI) tool tool for developing and troubleshooting policy 
+  - Corresponding Go bindings for Policy Assistant (`sigs.k8s.io/network-policy-api/policy-assistant` Go package)
 
-This repository is the home for both of the above components.
+## Note about Policy Assistant
+
+The remainder of this document refers to the API release.
+For information on Policy Assistant release, see the corresponding [RELEASE.md](./cmd/policy-assistant/RELEASE.md).
 
 ## Versioning strategy
 The versioning strategy for this project is covered in detail in [the release
